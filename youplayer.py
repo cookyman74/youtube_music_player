@@ -74,14 +74,11 @@ class Youtube_mp3():
         return self.item_names
 
     async def check_status(self, player):
-
-        def test(player):
-            while True:
-                status = str(player.get_state())
-                if status == "State.Ended":
-                    print("멈춰")
-                    break
-        await test(player)
+        while True:
+            status = str(player.get_state())
+            if status == "State.Ended":
+                print("멈춰")
+                break
 
     def play_media(self, num):
         url = self.item_names[int(num)][1]
@@ -97,7 +94,9 @@ class Youtube_mp3():
         str(player.get_state())
         good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
 
-        asyncio.run(self.check_status(player))
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.check_status())
+        loop.close()
         stop = ''
         while True:
             stop = input('Type "s" to stop; "p" to pause; "" to play; : ')
