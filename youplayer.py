@@ -20,6 +20,22 @@ class Youtube_mp3():
         self.playlist = []
         self.item_names = {}
         self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
+        self.player = ""
+
+    # https://stackoverflow.com/questions/45019711/how-to-make-vlc-repeat-the-whole-playlist-instead-of-only-current-item-using-lib
+
+    def addPlaylist(self):
+        self.mediaList = self.player.media_list_new()
+        for i, v in self.item_names.items():
+            self.mediaList.add_media(self.player.media_new(v[1]))
+        self.listPlayer = self.player.media_list_player_new()
+        self.listPlayer.set_media_list(self.mediaList)
+
+    def nextPlay(self):
+        self.listPlayer.next()
+
+    def playPlaylist(self):
+        self.listPlayer.play()
         
     def set_url(self, my_urlist):
         url_p = re.compile("^http.?:\/\/.*")
@@ -87,6 +103,7 @@ class Youtube_mp3():
         playurl = audio.url
         instance = vlc.Instance()
         player = instance.media_player_new()
+
         media = instance.media_new(playurl)
         media.get_mrl()
         player.set_media(media)
@@ -94,9 +111,9 @@ class Youtube_mp3():
         str(player.get_state())
         good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.check_status())
-        loop.close()
+        # loop = asyncio.get_event_loop()
+        # loop.run_until_complete(self.check_status(player))
+        # loop.close()
         stop = ''
         while True:
             stop = input('Type "s" to stop; "p" to pause; "" to play; : ')
@@ -155,6 +172,8 @@ if __name__ == '__main__':
     x.set_url(url)
     search = ''
     x.get_play_items()
+    x.addPlaylist()
+    x.playPlaylist()
     while search != 'q':
         max_search = 5
         download = input('1. Play Live Music\n2. Download Mp3 from Youtube.\n')
