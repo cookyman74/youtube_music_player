@@ -20,16 +20,10 @@ class Youtube_mp3():
         self.playlist = []
         self.item_names = {}
         self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
-        self.player = ""
+        self.player = vlc.Instance()
 
     # https://stackoverflow.com/questions/45019711/how-to-make-vlc-repeat-the-whole-playlist-instead-of-only-current-item-using-lib
 
-    def addPlaylist(self):
-        self.mediaList = self.player.media_list_new()
-        for i, v in self.item_names.items():
-            self.mediaList.add_media(self.player.media_new(v[1]))
-        self.listPlayer = self.player.media_list_player_new()
-        self.listPlayer.set_media_list(self.mediaList)
 
     def nextPlay(self):
         self.listPlayer.next()
@@ -97,37 +91,44 @@ class Youtube_mp3():
                 break
 
     def play_media(self, num):
-        url = self.item_names[int(num)][1]
-        info = pafy.new(url)
-        audio = info.getbestaudio(preftype="m4a")
-        playurl = audio.url
-        instance = vlc.Instance()
-        player = instance.media_player_new()
+        player = vlc.Instance()
+        # 플레이리스트 생성
+        media_list = player.media_list_new()
+        # 미디어리스트 재생기 생성.
+        media_player = player.media_list_player_new()
 
-        media = instance.media_new(playurl)
-        media.get_mrl()
-        player.set_media(media)
-        player.play()
-        str(player.get_state())
+        for i, v in self.item_names.items():
+            url = v[1]
+            info = pafy.new(url)
+            audio = info.getbestaudio(preftype="m4a")
+            play_url = audio.url
+            # 미디어리스트 생성
+            media = player.media_new(play_url)
+            media.get_mrl()
+            media_list.add_media(media)
+
+        # 미디어리스트를 재생기에 부여
+        media_player.set_media_list(media_list)
+        media_player.play()
+        status = str(media_player.get_state())
         good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
 
-        # loop = asyncio.get_event_loop()
-        # loop.run_until_complete(self.check_status(player))
-        # loop.close()
         stop = ''
         while True:
             stop = input('Type "s" to stop; "p" to pause; "" to play; : ')
             if stop == 's':
-                player.stop()
+                media_player.stop()
                 for i, v in self.item_names.items():
                     print(f"({i}) {v[0]}")
                 break
             elif stop == 'p':
-                player.pause()
+                media_player.pause()
             elif stop == '':
-                player.play()
+                media_player.play()
             elif stop == 'r':
                 print('Replaying: {0}'.format(self.item_names[int(num)]))
+            elif stop == 'n':
+                media_player.next()
 
     def download_media(self, num):
         url = self.item_names[int(num)]
@@ -172,8 +173,6 @@ if __name__ == '__main__':
     x.set_url(url)
     search = ''
     x.get_play_items()
-    x.addPlaylist()
-    x.playPlaylist()
     while search != 'q':
         max_search = 5
         download = input('1. Play Live Music\n2. Download Mp3 from Youtube.\n')
