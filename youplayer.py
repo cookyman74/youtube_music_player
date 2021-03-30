@@ -9,6 +9,7 @@ import vlc
 import configparser
 import re
 import asyncio
+import time
 
 
 config = configparser.ConfigParser()
@@ -90,6 +91,17 @@ class Youtube_mp3():
                 print("멈춰")
                 break
 
+    def test(self, player):
+        for i, v in self.item_names.items():
+            url = v[1]
+            info = pafy.new(url)
+            audio = info.getbestaudio(preftype="m4a")
+            play_url = audio.url
+            # 미디어리스트 생성
+            media = player.media_new(play_url)
+            media.get_mrl()
+            yield media
+
     def play_media(self, num):
         player = vlc.Instance()
         # 플레이리스트 생성
@@ -109,11 +121,23 @@ class Youtube_mp3():
 
         # 미디어리스트를 재생기에 부여
         media_player.set_media_list(media_list)
-        media_player.play()
+        print("플레이시작넘버: ", num)
+        media_player.play_item_at_index(int(num))
+        time.sleep(5)
+
+        # https://www.programcreek.com/python/example/93375/vlc.Instance
+        print(dir(media_player.get_media_player()))
+        print(dir(media_player.get_media_player().get_media()))
+        print(dir(media_player.get_media_player().has_vout()))
+
+        print(media_player.get_media_player().get_media().get_mrl())
+        print(media_player.get_media_player().get_full_title_descriptions())
+        print(media_player.get_media_player().get_length())
         status = str(media_player.get_state())
         good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
 
         stop = ''
+        # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
         while True:
             stop = input('Type "s" to stop; "p" to pause; "" to play; : ')
             if stop == 's':
@@ -129,6 +153,12 @@ class Youtube_mp3():
                 print('Replaying: {0}'.format(self.item_names[int(num)]))
             elif stop == 'n':
                 media_player.next()
+                time.sleep(5)
+                print(media_player.video_get_title_description())
+            elif stop == 'b':
+                media_player.previous()
+                time.sleep(5)
+                print(media_player.video_get_title_description())
 
     def download_media(self, num):
         url = self.item_names[int(num)]
