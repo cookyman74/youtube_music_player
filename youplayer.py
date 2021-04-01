@@ -1,45 +1,61 @@
 ﻿import pafy
-import pyglet
-import urllib.request
-from urllib.parse import *
-from bs4 import BeautifulSoup
 import googleapiclient.discovery
 from urllib.parse import parse_qs, urlparse
 import vlc
 import configparser
 import re
-import asyncio
-import time
-
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
 
-class Youtube_mp3():
+class YtbListPlayer:
     def __init__(self, api_key):
         self.playlist = []
         self.item_names = {}
-        self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
+        self.media_player = ""
         self.player = vlc.Instance()
+        self.url = config['DEFAULT'].get("MY_PLAY_URL", None)
+        self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
     # https://stackoverflow.com/questions/45019711/how-to-make-vlc-repeat-the-whole-playlist-instead-of-only-current-item-using-lib
-
-
-    def nextPlay(self):
-        self.listPlayer.next()
-
-    def playPlaylist(self):
-        self.listPlayer.play()
-        
-    def set_url(self, my_urlist):
+    def set_url(self, ytb_playlist_url):
+        '''
+        유튜브 playlist 주소만 받아 설정
+        :param ytb_playlist_url: 유튜브 플레이리스트 url 주소
+        :return: 
+        '''
         url_p = re.compile("^http.?:\/\/.*")
-        if url_p.match(my_urlist):
-            self.url = my_urlist
+        if url_p.match(ytb_playlist_url):
+            self.url = ytb_playlist_url
+
+    def get_ytblist(self):
+        '''
+        변환된 리스트를 전달.
+        :return:
+        '''
+        if self.item_names != {}:
+            return self.item_names
         else:
-            self.url = config['DEFAULT'].get("MY_PLAY_URL", None)
+            return False
+
+    def get_title(self, num):
+        '''
+        리스트에서 특정 플레이 명칭을 전달.
+        :param num:
+        :return:
+        '''
+
+        if self.item_names[num][0] is not None:
+            return self.item_names[num][0]
+        else:
+            return False
 
     def get_play_items(self):
+        '''
+        유튭 플레이리스트로부터 플레이정보를 가져오기
+        :return: 
+        '''
         if self.url is None:
             raise ValueError("나의 재생목록 url을 설정해주세요")
 
@@ -77,37 +93,16 @@ class Youtube_mp3():
                 except ValueError:
                     raise ValueError("에러 발생")
         else:
-            print("="*100)
+            print("=" * 100)
             for index, value in self.item_names.items():
                 print(f"({index}) {value}")
 
-    def get_list(self):
-        return self.item_names
-
-    async def check_status(self, player):
-        while True:
-            status = str(player.get_state())
-            if status == "State.Ended":
-                print("멈춰")
-                break
-
-    def test(self, player):
-        for i, v in self.item_names.items():
-            url = v[1]
-            info = pafy.new(url)
-            audio = info.getbestaudio(preftype="m4a")
-            play_url = audio.url
-            # 미디어리스트 생성
-            media = player.media_new(play_url)
-            media.get_mrl()
-            yield media
-
-    def play_media(self, num):
+    def set_mediaplayer(self):
         player = vlc.Instance()
-        # 플레이리스트 생성
+        # 플레이어의 미디어 리스트 객체 생성.
         media_list = player.media_list_new()
-        # 미디어리스트 재생기 생성.
-        media_player = player.media_list_player_new()
+        # 미디어리스트 플레이어 생성.
+        self.media_player = player.media_list_player_new()
 
         for i, v in self.item_names.items():
             url = v[1]
@@ -119,46 +114,43 @@ class Youtube_mp3():
             media.get_mrl()
             media_list.add_media(media)
 
-        # 미디어리스트를 재생기에 부여
-        media_player.set_media_list(media_list)
-        print("플레이시작넘버: ", num)
-        media_player.play_item_at_index(int(num))
-        time.sleep(5)
+        self.media_player.set_media_list(media_list)
+
+    def play_media(self, select_num):
+        num = int(select_num) - 1
+        self.media_player.play_item_at_index(num)
+        print(self.get_title(num+1))
+        # time.sleep(5)
 
         # https://www.programcreek.com/python/example/93375/vlc.Instance
-        print(dir(media_player.get_media_player()))
-        print(dir(media_player.get_media_player().get_media()))
-        print(dir(media_player.get_media_player().has_vout()))
-
-        print(media_player.get_media_player().get_media().get_mrl())
-        print(media_player.get_media_player().get_full_title_descriptions())
-        print(media_player.get_media_player().get_length())
-        status = str(media_player.get_state())
-        good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
-
-        stop = ''
+        status = str(self.media_player.get_state())
+        # good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
+        #
+        # play_typ = ''
         # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
         while True:
-            stop = input('Type "s" to stop; "p" to pause; "" to play; : ')
-            if stop == 's':
-                media_player.stop()
+            play_typ = input('Type "s" to stop; "p" to pause; "" to play; : ')
+            if play_typ == 's':
+                self.media_player.stop()
                 for i, v in self.item_names.items():
                     print(f"({i}) {v[0]}")
                 break
-            elif stop == 'p':
-                media_player.pause()
-            elif stop == '':
-                media_player.play()
-            elif stop == 'r':
+            elif play_typ == 'p':
+                self.media_player.pause()
+            elif play_typ == '':
+                self.media_player.play()
+            elif play_typ == 'r':
                 print('Replaying: {0}'.format(self.item_names[int(num)]))
-            elif stop == 'n':
-                media_player.next()
-                time.sleep(5)
-                print(media_player.video_get_title_description())
-            elif stop == 'b':
-                media_player.previous()
-                time.sleep(5)
-                print(media_player.video_get_title_description())
+            elif play_typ == 'n':
+                self.media_player.next()
+                num += 1
+                print(self.get_title(num+1))
+            elif play_typ == 'b':
+                self.media_player.previous()
+                num -= 1
+                print(self.get_title(num+1))
+
+        return play_typ
 
     def download_media(self, num):
         url = self.item_names[int(num)]
@@ -189,17 +181,15 @@ class Youtube_mp3():
         else:
             audio.download(filepath=filename, remux_audio=True)
 
-    def add_playlist(self, search_query):
-        url = self.get_play_items(search_query, max_search=1)
-        self.playlist.append(url)
-
 
 if __name__ == '__main__':
+
     print('Welcome to the Youtube-Mp3 player.')
     api_key = config['DEFAULT'].get("API_KEY")
-    url = 'https://www.youtube.com/playlist?list=PL7283475-4coSLe9BEWrHpQUJLPZZtI9B'
 
-    x = Youtube_mp3(api_key)
+    url = input('플레이리스트 URL: ').replace(' ', "")
+    print(url)
+    x = YtbListPlayer(api_key)
     x.set_url(url)
     search = ''
     x.get_play_items()
@@ -208,7 +198,10 @@ if __name__ == '__main__':
         download = input('1. Play Live Music\n2. Download Mp3 from Youtube.\n')
         if search != 'q' and (download == '1' or download == ''):
             song_number = input('Input song number: ')
-            x.play_media(song_number)
+            if search != 's':
+                print("search: ", search)
+                x.set_mediaplayer()
+            search = x.play_media(song_number)
         elif download == '2':
             print('\nDownloading {0} (conveniently) from youtube servers.'.format(search.title()))
             x.get_play_items(search, max_search)
