@@ -87,7 +87,7 @@ class YtbListPlayer:
             for url in url_list:
                 try:
                     info = pafy.new(url)
-                    self.item_names[i] = [info.title, url]
+                    self.item_names[i] = [info.title, info.getbestaudio(preftype="m4a")]
                     print(f"({i}) {info.title}")
                     i += 1
                 except ValueError:
@@ -102,12 +102,11 @@ class YtbListPlayer:
         # 플레이어의 미디어 리스트 객체 생성.
         media_list = player.media_list_new()
         # 미디어리스트 플레이어 생성.
+
         self.media_player = player.media_list_player_new()
 
         for i, v in self.item_names.items():
-            url = v[1]
-            info = pafy.new(url)
-            audio = info.getbestaudio(preftype="m4a")
+            audio = v[1]
             play_url = audio.url
             # 미디어리스트 생성
             media = player.media_new(play_url)
@@ -116,17 +115,13 @@ class YtbListPlayer:
 
         self.media_player.set_media_list(media_list)
 
-    def play_media(self, select_num):
+    def cmd_player(self, select_num):
         num = int(select_num) - 1
         self.media_player.play_item_at_index(num)
         print(self.get_title(num+1))
-        # time.sleep(5)
 
         # https://www.programcreek.com/python/example/93375/vlc.Instance
         status = str(self.media_player.get_state())
-        # good_states = ["State.Playing", "State.NothingSpecial", "State.Opening"]
-        #
-        # play_typ = ''
         # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
         while True:
             play_typ = input('Type "s" to stop; "p" to pause; "" to play; : ')
@@ -187,8 +182,7 @@ if __name__ == '__main__':
     print('Welcome to the Youtube-Mp3 player.')
     api_key = config['DEFAULT'].get("API_KEY")
 
-    url = input('플레이리스트 URL: ').replace(' ', "")
-    print(url)
+    url = 'https://www.youtube.com/playlist?list=PL7283475-4coSLe9BEWrHpQUJLPZZtI9B'
     x = YtbListPlayer(api_key)
     x.set_url(url)
     search = ''
@@ -201,7 +195,7 @@ if __name__ == '__main__':
             if search != 's':
                 print("search: ", search)
                 x.set_mediaplayer()
-            search = x.play_media(song_number)
+            search = x.cmd_player(song_number)
         elif download == '2':
             print('\nDownloading {0} (conveniently) from youtube servers.'.format(search.title()))
             x.get_play_items(search, max_search)
