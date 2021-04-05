@@ -182,7 +182,7 @@ if __name__ == '__main__':
     print('Welcome to the Youtube-Mp3 player.')
     api_key = config['DEFAULT'].get("API_KEY")
 
-    url = 'https://www.youtube.com/playlist?list=PL7283475-4coSLe9BEWrHpQUJLPZZtI9B'
+    url = 'https://www.youtube.com/playlist?list=PL7283475-4cpXpbZJdgNWOVh0nvMbDCH7'
     x = YtbListPlayer(api_key)
     x.set_url(url)
     search = ''
