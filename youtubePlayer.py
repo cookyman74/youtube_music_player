@@ -3,7 +3,7 @@ import pafy
 import googleapiclient.discovery
 import vlc
 import configparser
-import re
+import os
 
 
 class YtbListPlayer:
@@ -18,7 +18,7 @@ class YtbListPlayer:
         '''
         유튜브 playlist 주소만 받아 설정
         :param ytb_playlist_url: 유튜브 플레이리스트 url 주소
-        :return: 
+        :return:
         '''
         url_parse = urlparse(ytb_playlist_url)
         if url_parse.path == '/playlist':
@@ -56,7 +56,7 @@ class YtbListPlayer:
     def set_playitems(self):
         '''
         유튭 플레이리스트로부터 플레이정보를 가져오기
-        :return: 
+        :return:
         '''
         if self.url is None:
             raise ValueError("나의 재생목록 url을 설정해주세요")
@@ -70,7 +70,7 @@ class YtbListPlayer:
         request = youtube.playlistItems().list(
             part="snippet",
             playlistId=playlist_id,
-            maxResults=50
+            maxResults=100
         )
 
         playlist_items = []
@@ -88,19 +88,18 @@ class YtbListPlayer:
             i = 1
         else:
             i = len(self.play_list) + 1
-            
+
         for url in url_list:
             try:
                 info = pafy.new(url)
                 self.play_list[i] = [info.title, info.getbestaudio(preftype="m4a")]
-                print(f"({i}) {info.title}")
                 i += 1
-            except ValueError:
-                raise ValueError("에러 발생")
+            except Exception as err:
+                continue
 
     def get_playitems(self):
         for index, value in self.play_list.items():
-            print(f"({index}) {value}")
+            print(f"({index}) {value[0]}")
 
     def set_mediaplayer(self):
         player = vlc.Instance()
@@ -128,35 +127,27 @@ class YtbListPlayer:
         status = str(self.media_player.get_state())
         # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
 
-
     def download_media(self, num):
-        url = self.play_list[int(num)]
-        info = pafy.new(url)
-        audio = info.getbestaudio(preftype="m4a")
-        song_name = self.play_list[int(num)]
-        print("Downloading: {0}.".format(self.play_list[int(num)]))
+        audio_url = self.play_list[int(num)][1]
+        song_name = self.play_list[int(num)][0]
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
+        specialChars = "!#$%^&*:,.()"
+        print("Downloading: {0}.".format(song_name))
         print(song_name)
         song_name = input("Filename (Enter if as it is): ")
-        #       file_name = song_name[:11] + '.m4a'
-        file_name = song_name + '.m4a'
+        file_name = song_name.replace(specialChars, '')[:20] + '.m4a'
         if song_name == '':
-            audio.download(remux_audio=True)
+            audio_url.download(remux_audio=True)
         else:
-            audio.download(filepath=filename, remux_audio=True)
+            audio_url.download(filepath=BASE_DIR, remux_audio=True)
 
-    def bulk_download(self, url):
-        info = pafy.new(url)
-        audio = info.getbestaudio(preftype="m4a")
-        song_name = self.play_list[int(num)]
-        print("Downloading: {0}.".format(self.play_list[int(num)]))
-        print(song_name)
-        song_name = input("Filename (Enter if as it is): ")
-        #       file_name = song_name[:11] + '.m4a'
-        file_name = song_name + '.m4a'
-        if song_name == '':
-            audio.download(remux_audio=True)
-        else:
-            audio.download(filepath=filename, remux_audio=True)
+    def bulk_download(self):
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
+        for i, v in self.play_list.items():
+            audio_url = v[1]
+            song_name = v[0]
+            print(f"Downloading: ({i}) {song_name}")
+            audio_url.download(filepath=BASE_DIR)
 
 
 if __name__ == '__main__':
@@ -172,36 +163,36 @@ if __name__ == '__main__':
     play_order = ''
     song_number = 0
     while play_order != 'q':
-        download = input('1. Play Live Music\n2. Download Mp3 from Youtube.\n')
-        if play_order != 'q' and (download == '1' or download == ''):
+        if play_order != 's':
+            download = input('1. Play Live Music\n2. Download Mp3 from Youtube.\n')
 
-            if play_order == 'c':
-                x.clear_playitems()
-                url = input("플레이리스트 URL: ").replace(" ", "")
-                x.set_playlist(url)
-                x.set_playitems()
-                x.set_mediaplayer()
-               
-            if play_order == 'a':
+        if download == '1' or download == '':
+            if play_order == 'a' or play_order == '':
                 # 시작
                 url = input("플레이리스트 URL: ").replace(" ", "")
+            elif play_order == 'c':
+                x.clear_playitems()
+                url = input("플레이리스트 URL: ").replace(" ", "")
+
+            if play_order != 's':
                 x.set_playlist(url)
                 x.set_playitems()
                 x.set_mediaplayer()
-            
-            song_number = int(input('곡 선택: '))
+                x.get_playitems()
+
+            song_number = int(input('상위루프 곡 선택: '))
             x.cmd_player(song_number)
-                
+            play_order = ""
+            
             while True:
                 # 곡을 실행, 일시멈춤, 다음곡, 이전곡, 처음으로, 리스트추가, 리스트삭제, 아이템삭제.
-                if song_number == 0 or play_order == "":
-                    play_order = input('명령어를 입력: ')
+                if play_order != 's':
+                    play_order = input("하위루프 명령어를 입력해주세요: ")
 
                 if play_order == 's':
                     x.media_player.stop()
                     for i, v in x.play_list.items():
                         print(f"({i}) {v[0]}")
-                    song_number = int(input('곡 선택: '))
                     break
                 elif play_order == 'p':
                     x.media_player.pause()
@@ -226,7 +217,11 @@ if __name__ == '__main__':
                     break
 
         elif download == '2':
-            print('\nDownloading {0} (conveniently) from youtube servers.'.format(play_order.title()))
-            song_number = input('Input song number: ')
-            x.download_media(song_number)
+            url = input("플레이리스트 URL: ").replace(" ", "")
+            x.set_playlist(url)
+            x.set_playitems()
+            x.get_playitems()
+            # song_number = int(input('상위루프 곡 선택: '))
+            # x.download_media(song_number)
+            x.bulk_download()
 

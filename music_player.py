@@ -72,14 +72,15 @@ class Audiobox(Frame):
 
     def add_song(self, files):
         if not files: return
+        song_list = self.utbplayer.play_list
         for song in files:
             self.listbox.insert(len(self.song_list), os.path.splitext(os.path.basename(song))[0])
-            self.song_list.append([len(self.song_list), os.path.realpath(song)])
+            song_list.append([len(self.song_list), os.path.realpath(song)])
 
     def add_youtubelist(self, url):
-        self.utbplayer.set_url(url)
-        self.utbplayer.get_play_items()
-        music_lists = self.utbplayer.item_names
+        self.utbplayer.set_playlist(url)
+        self.utbplayer.set_playitems()
+        music_lists = self.utbplayer.play_list
 
         for _, v in music_lists.items():
             title = v[0]

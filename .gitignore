@@ -1,0 +1,6 @@
+# User-specific stuff
+.idea/*
+build/*
+download/*
+images/*
+config.ini
