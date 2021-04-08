@@ -41,8 +41,9 @@ class Audiobox(Frame):
             mixer.music.stop()
             self.songOffset = 0
             select_num = self.listbox.curselection()[0]
+            song_list = self.utbplayer.play_list
             if self.listbox.curselection():
-                song = audiobox.song_list[select_num][1]
+                song = song_list[select_num].getbestaudio(preftype="m4a")
                 if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
                     # todo 유튜브 플레이 시간 & playtime bar
                     print("유튜브 플레이 시간정보")
@@ -82,18 +83,19 @@ class Audiobox(Frame):
         self.utbplayer.set_playitems()
         music_lists = self.utbplayer.play_list
 
-        for _, v in music_lists.items():
-            title = v[0]
-            play_url = v[1]
+        for _, audio in music_lists.items():
+            title = audio.title
+            play_url = audio.getbestaudio(preftype="m4a")
             self.listbox.insert(len(self.listbox.get(0)), title)
-            self.song_list.append([len(self.song_list), play_url])
+            # self.song_list.append([len(self.song_list), play_url])
 
     def add_playlist(self, directory):
         if not directory: return
         files = os.listdir(directory)
+        song_list = self.utbplayer.play_list
         for song in files:
             noExtension = os.path.splitext(song)[0]
-            self.song_list.append([len(self.song_list), os.path.realpath(directory) + '\\' + song])
+            song_list.append([len(song_list), os.path.realpath(directory) + '\\' + song])
             self.listbox.insert(len(self.listbox.get(0, END)), noExtension)
 
     def set_song(self, index):
@@ -112,9 +114,11 @@ class Audiobox(Frame):
         if len(currentSelections) == 0: return
 
         currentIndex = self.listbox.index(ACTIVE)
-        print(self.song_list)
+        song_list = self.utbplayer.play_list
+        print(song_list)
         print(self.listbox.get(0))
-        if str(type(self.song_list[currentIndex][1])) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
+        print(type(song_list[currentIndex]))
+        if str(type(song_list[currentIndex].getbestaudio(preftype="m4a"))) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
             # 유튜브 플레이리스트
             if self.utbplayer.media_player is None:
                 self.utbplayer.set_mediaplayer()
@@ -126,7 +130,7 @@ class Audiobox(Frame):
                 player.play_item_at_index(currentIndex)
         else:
             # MP3파일 실행
-            path = self.song_list[currentIndex][1]
+            path = song_list[currentIndex][1]
 
             if mixer.music.get_busy() == False:
                 mixer.music.load(path)
@@ -279,7 +283,8 @@ def createTab(name, added_commands, parent):
 def update():
     if audiobox.listbox.curselection():
         print("sldjflsjdflsjdflksdjflksjdlk")
-        song = audiobox.song_list[audiobox.listbox.curselection()[0]][1]
+        song_list = audiobox.utbplayer.play_list
+        song = song_list[audiobox.listbox.curselection()[0]].getbestaudio(preftype="m4a")
         startTime = '00:00'
         if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
             audiobox.utbplayer.set_mediaplayer()
