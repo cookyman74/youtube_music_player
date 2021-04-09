@@ -45,8 +45,8 @@ class YtbListPlayer:
         :return:
         '''
 
-        if self.play_list[num][0] is not None:
-            return self.play_list[num][0]
+        if self.play_list[num] is not None:
+            return self.play_list[num].title
         else:
             return False
 
@@ -70,7 +70,7 @@ class YtbListPlayer:
         request = youtube.playlistItems().list(
             part="snippet",
             playlistId=playlist_id,
-            maxResults=50
+            maxResults=100
         )
 
         playlist_items = []
@@ -91,15 +91,15 @@ class YtbListPlayer:
 
         for url in url_list:
             try:
-                info = pafy.new(url)
-                self.play_list[i] = [info.title, info.getbestaudio(preftype="m4a")]
+                self.play_list[i] = pafy.new(url)
+                # self.play_list[i] = [info.title, info.getbestaudio(preftype="m4a")]
                 i += 1
-            except ValueError:
-                raise ValueError("에러 발생")
+            except:
+                continue
 
     def get_playitems(self):
-        for index, value in self.play_list.items():
-            print(f"({index}) {value}")
+        for index, audio in self.play_list.items():
+            print(f"({index}) {audio.title} [{audio.duration}, {audio.length}] - 좋아요수: {audio.likes}")
 
     def set_mediaplayer(self):
         player = vlc.Instance()
@@ -108,9 +108,8 @@ class YtbListPlayer:
         # 미디어리스트 플레이어 생성.
 
         self.media_player = player.media_list_player_new()
-        for _, v in self.play_list.items():
-            audio = v[1]
-            play_url = audio.url
+        for _, audio in self.play_list.items():
+            play_url = audio.getbestaudio(preftype="m4a").url
             # 미디어리스트 생성
             media = player.media_new(play_url)
             media.get_mrl()
@@ -128,26 +127,27 @@ class YtbListPlayer:
         # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
 
     def download_media(self, num):
-        audio_url = self.play_list[int(num)][1]
-        song_name = self.play_list[int(num)][0]
+        audio_url = self.play_list[int(num)].getbestaudio(preftype="m4a")
+        song_name = self.play_list[int(num)].title
         BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
-        specialChars = "!#$%^&*:,.()"
         print("Downloading: {0}.".format(song_name))
-        print(song_name)
-        song_name = input("Filename (Enter if as it is): ")
-        file_name = song_name.replace(specialChars, '')[:20] + '.m4a'
-        if song_name == '':
-            audio_url.download(remux_audio=True)
+        directory = input("다운로드할 경로를 넣어주세요(기본값: download): ")
+        if directory:
+            audio_url.download(filepath=directory)
         else:
-            audio_url.download(filepath=BASE_DIR, remux_audio=True)
+            audio_url.download(filepath=BASE_DIR)
 
     def bulk_download(self):
         BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
-        for i, v in self.play_list.items():
-            audio_url = v[1]
-            song_name = v[0]
+        directory = input("다운로드할 경로를 넣어주세요(기본값: download): ")
+        for i, audio in self.play_list.items():
+            audio_url = audio.getbestaudio(preftype="m4a")
+            song_name = audio.title
             print(f"Downloading: ({i}) {song_name}")
-            audio_url.download(filepath=BASE_DIR)
+            if directory:
+                audio_url.download(filepath=directory)
+            else:
+                audio_url.download(filepath=BASE_DIR)
 
 
 if __name__ == '__main__':
@@ -191,8 +191,8 @@ if __name__ == '__main__':
 
                 if play_order == 's':
                     x.media_player.stop()
-                    for i, v in x.play_list.items():
-                        print(f"({i}) {v[0]}")
+                    for i, audio in x.play_list.items():
+                        print(f"({i}) {audio.title} - 좋아요수: {audio.likes}")
                     break
                 elif play_order == 'p':
                     x.media_player.pause()
