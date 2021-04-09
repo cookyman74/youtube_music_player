@@ -75,8 +75,8 @@ class Audiobox(Frame):
         if not files: return
         song_list = self.utbplayer.play_list
         for song in files:
-            self.listbox.insert(len(self.song_list), os.path.splitext(os.path.basename(song))[0])
-            song_list.append([len(self.song_list), os.path.realpath(song)])
+            self.listbox.insert(len(song_list), os.path.splitext(os.path.basename(song))[0])
+            song_list.append([len(song_list), os.path.realpath(song)])
 
     def add_youtubelist(self, url):
         self.utbplayer.set_playlist(url)
@@ -87,7 +87,6 @@ class Audiobox(Frame):
             title = audio.title
             play_url = audio.getbestaudio(preftype="m4a")
             self.listbox.insert(len(self.listbox.get(0)), title)
-            # self.song_list.append([len(self.song_list), play_url])
 
     def add_playlist(self, directory):
         if not directory: return
@@ -109,15 +108,13 @@ class Audiobox(Frame):
 
         input_pannel.timeBar.config(to=int(audio.info.length))
 
-    def play_youtube(self):
+    def play_song(self):
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
 
         currentIndex = self.listbox.index(ACTIVE)
         song_list = self.utbplayer.play_list
         print(song_list)
-        print(self.listbox.get(0))
-        print(type(song_list[currentIndex]))
         if str(type(song_list[currentIndex].getbestaudio(preftype="m4a"))) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
             # 유튜브 플레이리스트
             if self.utbplayer.media_player is None:
@@ -140,28 +137,14 @@ class Audiobox(Frame):
                 self.songOffset += mixer.music.get_pos()
                 mixer.music.stop()
 
-    def play_song(self):
-        currentSelections = self.listbox.curselection()
-        if len(currentSelections) == 0: return
-
-        currentIndex = self.listbox.index(ACTIVE)
-        path = self.song_list[currentIndex][1]
-
-        if mixer.music.get_busy() == False:
-            mixer.music.load(path)
-            self.set_song(currentIndex)
-            mixer.music.play(loops=0, start=self.songOffset / 1000)
-        else:
-            self.songOffset += mixer.music.get_pos()
-            mixer.music.stop()
-
     def next_song(self):
         self.songOffset = 0
+        song_list = self.utbplayer.play_list
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
 
         currentIndex = currentSelections[0] + 1
-        if currentIndex > len(self.song_list) - 1: currentIndex = 0
+        if currentIndex > len(song_list) - 1: currentIndex = 0
         if mixer.music.get_busy() == True:
             mixer.music.stop()
             self.set_song(currentIndex)
@@ -256,7 +239,7 @@ class InputPannel(Frame):
         self.next.pack(side=LEFT, fill=X, expand=1)
 
         # Linking button to functions
-        self.pauseplay.config(command=audiobox.play_youtube)
+        self.pauseplay.config(command=audiobox.play_song)
 
 
 audiobox = Audiobox(master=root)
@@ -312,7 +295,7 @@ def update():
                 elif input_pannel.loop.get() == 1:
                     mixer.music.stop()
                     audiobox.songOffset = 0
-                    audiobox.play_youtube()
+                    audiobox.play_song()
                 else:
                     mixer.music.stop()
                     audiobox.songOffset = 0
