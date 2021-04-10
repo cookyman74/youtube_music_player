@@ -8,7 +8,7 @@ import os
 
 class YtbListPlayer:
     def __init__(self, api_key):
-        self.play_list = {}
+        self.play_list = []
         self.media_player = ""
         self.player = vlc.Instance()
         self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
@@ -33,7 +33,7 @@ class YtbListPlayer:
         변환된 리스트를 전달.
         :return:
         '''
-        if self.play_list != {}:
+        if self.play_list != []:
             return self.play_list
         else:
             return False
@@ -44,16 +44,16 @@ class YtbListPlayer:
         :param num:
         :return:
         '''
-
-        if self.play_list[num] is not None:
-            return self.play_list[num].title
+        if self.play_list[num]:
+            audio = self.play_list[num]
+            return audio.title
         else:
-            return False
+            return "---"
 
     def clear_playitems(self):
-        self.play_list = {}
+        self.play_list = []
 
-    def set_playitems(self):
+    def set_utbplay_items(self):
         '''
         유튭 플레이리스트로부터 플레이정보를 가져오기
         :return:
@@ -84,51 +84,51 @@ class YtbListPlayer:
             for t in playlist_items
         ]
 
-        if self.play_list == {}:
-            i = 1
+        if self.play_list == []:
+            i = 0
         else:
             i = len(self.play_list) + 1
 
         for url in url_list:
             try:
-                self.play_list[i] = pafy.new(url)
-                # self.play_list[i] = [info.title, info.getbestaudio(preftype="m4a")]
+                audio = pafy.new(url)
+                self.play_list.append(audio)
                 i += 1
             except:
                 continue
 
     def get_playitems(self):
-        for index, audio in self.play_list.items():
+        for index, audio in enumerate(self.play_list, 0):
             print(f"({index}) {audio.title} [{audio.duration}, {audio.length}] - 좋아요수: {audio.likes}")
 
     def set_mediaplayer(self):
         player = vlc.Instance()
+        # player = vlc.Instance('--verbose 3')
         # 플레이어의 미디어 리스트 객체 생성.
         media_list = player.media_list_new()
         # 미디어리스트 플레이어 생성.
-
         self.media_player = player.media_list_player_new()
-        for _, audio in self.play_list.items():
-            play_url = audio.getbestaudio(preftype="m4a").url
-            # 미디어리스트 생성
-            media = player.media_new(play_url)
-            media.get_mrl()
-            media_list.add_media(media)
+        for audio in self.play_list:
+            if str(type(audio)) != "<class 'str'>":
+                play_url = audio.getbestaudio(preftype="m4a").url
+                media = player.media_new(play_url)
+                media.get_mrl()
+                media_list.add_media(media)
+            else:
+                media = player.media_new(audio)
+                media_list.add_media(media)
 
         self.media_player.set_media_list(media_list)
 
     def cmd_player(self, select_num):
-        num = int(select_num) - 1
-        self.media_player.play_item_at_index(num)
-        print(self.get_title(num+1))
-
+        self.media_player.play_item_at_index(select_num)
+        print(self.get_title(select_num))
         # https://www.programcreek.com/python/example/93375/vlc.Instance
-        status = str(self.media_player.get_state())
         # https://www.geeksforgeeks.org/python-vlc-medialistplayer-currently-playing/?ref=rp
 
     def download_media(self, num):
-        audio_url = self.play_list[int(num)].getbestaudio(preftype="m4a")
-        song_name = self.play_list[int(num)].title
+        audio_url = self.play_list[num].getbestaudio(preftype="m4a")
+        song_name = self.play_list[num].title
         BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
         print("Downloading: {0}.".format(song_name))
         directory = input("다운로드할 경로를 넣어주세요(기본값: download): ")
@@ -140,7 +140,7 @@ class YtbListPlayer:
     def bulk_download(self):
         BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "\\" + "download"
         directory = input("다운로드할 경로를 넣어주세요(기본값: download): ")
-        for i, audio in self.play_list.items():
+        for audio in self.play_list:
             audio_url = audio.getbestaudio(preftype="m4a")
             song_name = audio.title
             print(f"Downloading: ({i}) {song_name}")
@@ -176,14 +176,14 @@ if __name__ == '__main__':
 
             if play_order != 's':
                 x.set_playlist(url)
-                x.set_playitems()
+                x.set_utbplay_items()
                 x.set_mediaplayer()
                 x.get_playitems()
 
             song_number = int(input('상위루프 곡 선택: '))
             x.cmd_player(song_number)
             play_order = ""
-            
+
             while True:
                 # 곡을 실행, 일시멈춤, 다음곡, 이전곡, 처음으로, 리스트추가, 리스트삭제, 아이템삭제.
                 if play_order != 's':
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
                 if play_order == 's':
                     x.media_player.stop()
-                    for i, audio in x.play_list.items():
+                    for i, audio in enumerate(x.play_list, 0):
                         print(f"({i}) {audio.title} - 좋아요수: {audio.likes}")
                     break
                 elif play_order == 'p':
@@ -199,7 +199,7 @@ if __name__ == '__main__':
                 elif play_order == '':
                     x.media_player.play()
                 elif play_order == 'r':
-                    print('Replaying: {0}'.format(x.play_list[int(song_number)]))
+                    print('Replaying: {0}'.format(x.play_list.get(int(song_number))))
                 elif play_order == 'n':
                     x.media_player.next()
                     song_number += 1
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         elif download == '2':
             url = input("플레이리스트 URL: ").replace(" ", "")
             x.set_playlist(url)
-            x.set_playitems()
+            x.set_utbplay_items()
             x.get_playitems()
             # song_number = int(input('상위루프 곡 선택: '))
             # x.download_media(song_number)
