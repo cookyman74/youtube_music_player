@@ -1,5 +1,7 @@
 from tkinter import *
 from tkinter import filedialog
+from tkinter import simpledialog
+
 
 import os
 import sys
@@ -10,7 +12,6 @@ from mutagen.mp3 import MP3
 import pygame
 from pygame import mixer
 from youtubePlayer import YtbListPlayer
-import configparser
 
 pygame.mixer.init()
 
@@ -25,12 +26,11 @@ root.title('Utb Audio Player')
 
 # Main classes
 class Audiobox(Frame):
-    def __init__(self, master=None):
+    def __init__(self, master=None, audio=None):
         super().__init__()
 
         # Frame settings
-        api_key = 'AIzaSyDWcZTZfUp_xqT_QF7eftkiaMSFvu2UaBU'
-        self.utbplayer = YtbListPlayer(api_key)
+        self.audio = audio
         self.master = master
         self.pack_propagate(0)
         self.config(width=260, height=160, bg="#FFF")
@@ -38,18 +38,22 @@ class Audiobox(Frame):
 
         # Create Listbox
         def listbox_func(evnt):
-            mixer.music.stop()
+            try:
+                self.audio.media_player.stop()
+            except:
+                pass
             self.songOffset = 0
             select_num = self.listbox.curselection()[0]
-            song_list = self.utbplayer.play_list
+            song_list = self.audio.play_list  #플레이리스트 받아오기
             if self.listbox.curselection():
-                song = song_list[select_num].getbestaudio(preftype="m4a")
-                if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
-                    # todo 유튜브 플레이 시간 & playtime bar
-                    print("유튜브 플레이 시간정보")
+                song = song_list[select_num]
+                if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlPafy'>" and song:
+                    # 유튭플레이용 pafy객체인지에 따라 타이머바 초깃값 설정.
+                    input_pannel.timeBar.config(to=int(song.length))
                     input_pannel.timeBar.set(0)
                 else:
                     audio = MP3(song)
+                    print("mp3길이: ", int(audio.info.length))
                     input_pannel.timeBar.config(to=int(audio.info.length))
                     input_pannel.timeBar.set(0)
 
@@ -65,37 +69,35 @@ class Audiobox(Frame):
 
         # Song tracking variable
         self.current_song = None  # Possess the index of the current song
-        self.song_list = []  # Possess both the index and path of song (ex: song_list = [[0, "/song1.mp3"], [1, "song2.ogg"]])
         self.current_time = 0
         self.songOffset = 0
-
         self.isPlaying = False
 
     def add_song(self, files):
         if not files: return
-        song_list = self.utbplayer.play_list
+
         for song in files:
-            self.listbox.insert(len(song_list), os.path.splitext(os.path.basename(song))[0])
-            song_list.append([len(song_list), os.path.realpath(song)])
+            self.listbox.insert(len(self.audio.play_list), os.path.splitext(os.path.basename(song))[0])
+            self.audio.play_list.append(os.path.realpath(song))
 
     def add_youtubelist(self, url):
-        self.utbplayer.set_playlist(url)
-        self.utbplayer.set_playitems()
-        music_lists = self.utbplayer.play_list
+        self.audio.set_playlist(url)
+        self.audio.set_utbplay_items()
 
-        for _, audio in music_lists.items():
+        for audio in self.audio.play_list:
             title = audio.title
-            play_url = audio.getbestaudio(preftype="m4a")
-            self.listbox.insert(len(self.listbox.get(0)), title)
+            self.listbox.insert(len(self.audio.play_list), title)
 
     def add_playlist(self, directory):
         if not directory: return
         files = os.listdir(directory)
         song_list = self.utbplayer.play_list
+        index = max(song_list.keys()) + 1
         for song in files:
             noExtension = os.path.splitext(song)[0]
-            song_list.append([len(song_list), os.path.realpath(directory) + '\\' + song])
+            song_list[index] = os.path.realpath(directory) + '\\' + song
             self.listbox.insert(len(self.listbox.get(0, END)), noExtension)
+            index += 1
 
     def set_song(self, index):
         self.listbox.selection_clear(0, END)
@@ -103,68 +105,47 @@ class Audiobox(Frame):
         self.listbox.activate(index)
         self.current_time = 0
 
-        song = audiobox.song_list[audiobox.listbox.curselection()[0]][1]
-        audio = MP3(song)
-
-        input_pannel.timeBar.config(to=int(audio.info.length))
+        # song = self.audio.media_player[audiobox.listbox.curselection()[0]]
+        # input_pannel.timeBar.config(to=int(song.length))
 
     def play_song(self):
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
 
+        self.audio.set_mediaplayer()
+
+        player = self.audio.media_player
         currentIndex = self.listbox.index(ACTIVE)
-        song_list = self.utbplayer.play_list
-        print(song_list)
-        if str(type(song_list[currentIndex].getbestaudio(preftype="m4a"))) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
-            # 유튜브 플레이리스트
-            if self.utbplayer.media_player is None:
-                self.utbplayer.set_mediaplayer()
+        player.play_item_at_index(currentIndex)
 
-            player = self.utbplayer.media_player
-            if str(player.get_state()) in ["State.Playing", "State.Opening"]:
-                player.stop()
-            else:
-                player.play_item_at_index(currentIndex)
-        else:
-            # MP3파일 실행
-            path = song_list[currentIndex][1]
+        # 유튜브 플레이리스트
+        # if self.audio.media_player is None:
+        #     self.audio.set_utbplay_items()
 
-            if mixer.music.get_busy() == False:
-                mixer.music.load(path)
-                self.set_song(currentIndex)
-                mixer.music.play(loops=0, start=self.songOffset / 1000)
-            else:
-                self.songOffset += mixer.music.get_pos()
-                mixer.music.stop()
+    def stop_song(self):
+        player = self.audio.media_player
+        player.stop()
 
     def next_song(self):
-        self.songOffset = 0
-        song_list = self.utbplayer.play_list
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
-
-        currentIndex = currentSelections[0] + 1
-        if currentIndex > len(song_list) - 1: currentIndex = 0
-        if mixer.music.get_busy() == True:
-            mixer.music.stop()
-            self.set_song(currentIndex)
-            self.play_song()
-        else:
-            self.set_song(currentIndex)
+        self.audio.media_player.next()
+        currentIndex = int(currentSelections[0]) + 1
+        self.set_song(currentIndex)
 
     def back_song(self):
-        self.songOffset = 0
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
 
         currentIndex = currentSelections[0] - 1
         if currentIndex < 0: currentIndex = 0
-        if mixer.music.get_busy() == True:
-            mixer.music.stop()
-            self.set_song(currentIndex)
-            self.play_song()
-        else:
-            self.set_song(currentIndex)
+        self.audio.media_player.previous()
+        self.set_song(currentIndex)
+
+    def set_volume(self, volume):
+        # https://stackoverflow.com/questions/45150694/how-to-change-the-volume-of-playback-in-medialistplayer-with-libvlc
+        player = self.audio.media_player
+        player.get_media_player().audio_set_volume(volume)
 
 
 class InputPannel(Frame):
@@ -184,7 +165,7 @@ class InputPannel(Frame):
 
         self.volume = Scale(root, length=150, from_=100, to=0);
         self.volume.set(100)
-        self.volume.config(command=lambda f: mixer.music.set_volume(self.volume.get() / 100))
+        self.volume.config(command=lambda f: audiobox.set_volume(int(self.volume.get())))
         self.volume.bind('<Button-1>', setVolumeBar)
         self.timeLabel = Label(self, text="00:00 | 00:00", font=(None, 12, "italic"))  # Time indicator
         self.timeLabel.config(bd=5, relief=GROOVE)  # width=22,
@@ -219,6 +200,7 @@ class InputPannel(Frame):
         bFrame = Frame(self, bg='#FFF')
         self.back = Button(bFrame, text="Prev", font=(None, 11))  # Back button
         self.pauseplay = Button(bFrame, text="Pause / Play", font=(None, 11))  # Play and Pause button
+        self.stop = Button(bFrame, text="stop", font=(None, 11))  # Play and Pause button
         self.next = Button(bFrame, text="Next", font=(None, 11))  # Next button
 
         self.next.config(command=audiobox.next_song)  # Next song binding
@@ -236,17 +218,23 @@ class InputPannel(Frame):
 
         self.back.pack(side=LEFT, fill=X, expand=1)
         self.pauseplay.pack(side=LEFT, fill=X, expand=1)
+        self.stop.pack(side=LEFT, fill=X, expand=1)
         self.next.pack(side=LEFT, fill=X, expand=1)
 
         # Linking button to functions
         self.pauseplay.config(command=audiobox.play_song)
+        self.stop.config(command=audiobox.stop_song)
 
 
-audiobox = Audiobox(master=root)
+
+api_key = 'AIzaSyDWcZTZfUp_xqT_QF7eftkiaMSFvu2UaBU'
+utbplayer = YtbListPlayer(api_key)
+
+audiobox = Audiobox(master=root, audio=utbplayer)
 input_pannel = InputPannel(master=root)
 
 # Credits
-Label(root, text="Made by cookyman ( cookyman@gmail.com )").grid(row=1, column=0)
+Label(root, text="Made by cookyman").grid(row=1, column=0)
 Label(root, text="https://scv-life.tistory.com/", fg="blue").grid(row=2, column=0)
 
 # Menu bar and it's tabs
@@ -265,65 +253,32 @@ def createTab(name, added_commands, parent):
 # Timer update
 def update():
     if audiobox.listbox.curselection():
-        print("sldjflsjdflsjdflksdjflksjdlk")
-        song_list = audiobox.utbplayer.play_list
-        song = song_list[audiobox.listbox.curselection()[0]].getbestaudio(preftype="m4a")
-        startTime = '00:00'
-        if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlStream'>":
-            audiobox.utbplayer.set_mediaplayer()
-            audio = audiobox.utbplayer.media_player
+        player = audiobox.audio.media_player
+        try:
+            play_state = player.get_state()
+            total_length = player.get_media_player().get_length() / 1000
+            total_minutes = int(total_length // 60)
+            total_seconds = int(total_length % 60)
+            totalTime = "{0:02d} : {1:02d}".format(total_minutes, total_seconds)
+        except Exception as err:
+            play_state = False
+
+        if str(play_state) in ["State.Opening", "State.Playing"]:
+            running_length = player.get_media_player().get_time() / 1000
+            running_minutes = int(running_length // 60)
+            running_seconds = int(running_length % 60)
+            startTime = "{0:02d} : {1:02d}".format(running_minutes, running_seconds)
+            # todo : 트래킹 바 구현
+            # input_pannel.timeBar.set(audiobox.current_time)
         else:
-            audio = MP3(song)
-
-        # Start Time
-        if mixer.music.get_busy():
-            print("hhhhhhhh")
-            audiobox.current_time = (audiobox.songOffset + mixer.music.get_pos()) / 1000
-
-            minutes = int(audiobox.current_time // 60)
-            seconds = int(audiobox.current_time % 60)
-
-            if minutes < 10: minutes = '0' + str(minutes)
-            if seconds < 10: seconds = '0' + str(seconds)
-
-            startTime = str(minutes) + ':' + str(seconds)
-            input_pannel.timeBar.set(audiobox.current_time)
-
-            if round(audio.info.length / audiobox.current_time, 2) <= 1:
-                if input_pannel.autoplay.get() == 1:
-                    audiobox.next_song()
-                elif input_pannel.loop.get() == 1:
-                    mixer.music.stop()
-                    audiobox.songOffset = 0
-                    audiobox.play_song()
-                else:
-                    mixer.music.stop()
-                    audiobox.songOffset = 0
-                    input_pannel.timeBar.set(0)
-        else:
-            print("333333")
-            audiobox.current_time = audiobox.songOffset / 1000
-            if audiobox.current_time > 0:
-                minutes = int(audiobox.current_time // 60)
-                seconds = int(audiobox.current_time % 60)
-
-                if minutes < 10: minutes = '0' + str(minutes)
-                if seconds < 10: seconds = '0' + str(seconds)
-
-                startTime = str(minutes) + ':' + str(seconds)
-
-        # End time
-        minutes = int(audio.info.length // 60)
-        seconds = int(audio.info.length % 60)
-
-        if minutes < 10: minutes = '0' + str(minutes)
-        if seconds < 10: seconds = '0' + str(seconds)
-
-        minutes = str(minutes)
-        seconds = str(seconds)
-
-        input_pannel.timeLabel.config(text=startTime + ' | ' + minutes + ':' + seconds)
-
+            print("*"*100)
+            total_minutes = 0
+            total_seconds = 0
+            running_minutes = 0
+            running_seconds = 0
+            totalTime = "{0:02d} : {1:02d}".format(total_minutes, total_seconds)
+            startTime = "{0:02d} : {1:02d}".format(running_minutes, running_seconds)
+        input_pannel.timeLabel.config(text=startTime + ' | ' + totalTime)
     root.after(250, update)
 
 
@@ -351,7 +306,9 @@ def remove_tracks():
 
 
 url = 'https://www.youtube.com/playlist?list=PL7283475-4cpXpbZJdgNWOVh0nvMbDCH7'
-createTab("File", [["Add youtube Url(s)", lambda: audiobox.add_youtubelist(url)],
+createTab("File", [["Add youtube Url(s)", lambda: audiobox.add_youtubelist(
+simpledialog.askstring("url", "유튭플레이리스트URL")
+)],
                    ["Add Files(s)", lambda: audiobox.add_song(
                        filedialog.askopenfilenames(filetypes=[('Music files', '.wav .mp3 .ogg')]))],
                    ["Add Playlist dir", lambda: audiobox.add_playlist(filedialog.askdirectory())]], menuBar)
@@ -360,7 +317,6 @@ createTab("Edit", [['Remove Track(s)', remove_tracks], ["Clear Audiobosx", clear
 
 def destroy_func(event):
     mixer.music.stop()
-
 
 root.bind('<Destroy>', destroy_func)
 root.after(100, update)
