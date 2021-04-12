@@ -4,12 +4,10 @@ from tkinter import simpledialog
 
 
 import os
-import sys
-
-import mutagen
 from mutagen.mp3 import MP3
 
 import pygame
+import asyncio
 from pygame import mixer
 from youtubePlayer import YtbListPlayer
 
@@ -19,12 +17,9 @@ pygame.mixer.init()
 root = Tk()
 root.geometry("600x280")
 root.resizable(False, False)
-root.title('Utb Audio Player')
-
-# print(os.path.realpath(__file__))
+root.title('쿠키맨 유튭MP3 플레이어')
 
 
-# Main classes
 class Audiobox(Frame):
     def __init__(self, master=None, audio=None):
         super().__init__()
@@ -75,14 +70,15 @@ class Audiobox(Frame):
 
     def add_song(self, files):
         if not files: return
-
         for song in files:
             self.listbox.insert(len(self.audio.play_list), os.path.splitext(os.path.basename(song))[0])
             self.audio.play_list.append(os.path.realpath(song))
 
     def add_youtubelist(self, url):
         self.audio.set_playlist(url)
-        self.audio.set_utbplay_items()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.audio.set_utbplay_items())
+        # self.audio.set_utbplay_items()
 
         for audio in self.audio.play_list:
             title = audio.title
@@ -91,7 +87,7 @@ class Audiobox(Frame):
     def add_playlist(self, directory):
         if not directory: return
         files = os.listdir(directory)
-        song_list = self.utbplayer.play_list
+        song_list = self.audio.play_list
         index = max(song_list.keys()) + 1
         for song in files:
             noExtension = os.path.splitext(song)[0]
@@ -163,7 +159,7 @@ class InputPannel(Frame):
             self.volume.event_generate("<Button-3>", x=event.x, y=event.y)
             return
 
-        self.volume = Scale(root, length=150, from_=100, to=0);
+        self.volume = Scale(root, length=150, from_=100, to=0)
         self.volume.set(100)
         self.volume.config(command=lambda f: audiobox.set_volume(int(self.volume.get())))
         self.volume.bind('<Button-1>', setVolumeBar)

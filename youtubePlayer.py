@@ -4,7 +4,7 @@ import googleapiclient.discovery
 import vlc
 import configparser
 import os
-
+import asyncio
 
 class YtbListPlayer:
     def __init__(self, api_key):
@@ -53,9 +53,22 @@ class YtbListPlayer:
     def clear_playitems(self):
         self.play_list = []
 
-    def set_utbplay_items(self):
+    async def coroutine_pafy(self, url):
         '''
-        유튭 플레이리스트로부터 플레이정보를 가져오기
+        코루틴 변환 함수
+        :param url:
+        :return:
+        '''
+        try:
+            loop = asyncio.get_event_loop()
+            audio = await loop.run_in_executor(None, pafy.new, url)
+            await self.play_list.append(audio)
+        except:
+            pass
+
+    async def set_utbplay_items(self):
+        '''
+        유튭 플레이리스트로부터 플레이정보를 비동기식으로 가져오기
         :return:
         '''
         if self.url is None:
@@ -84,18 +97,8 @@ class YtbListPlayer:
             for t in playlist_items
         ]
 
-        if self.play_list == []:
-            i = 0
-        else:
-            i = len(self.play_list) + 1
-
-        for url in url_list:
-            try:
-                audio = pafy.new(url)
-                self.play_list.append(audio)
-                i += 1
-            except:
-                continue
+        futures = [asyncio.ensure_future(self.coroutine_pafy(url)) for url in url_list]
+        await asyncio.gather(*futures)
 
     def get_playitems(self):
         for index, audio in enumerate(self.play_list, 0):
@@ -151,6 +154,7 @@ class YtbListPlayer:
 
 
 if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
     config = configparser.ConfigParser()
     config.read('config.ini')
 
@@ -176,7 +180,8 @@ if __name__ == '__main__':
 
             if play_order != 's':
                 x.set_playlist(url)
-                x.set_utbplay_items()
+                loop.run_until_complete(x.set_utbplay_items())
+                loop.close()
                 x.set_mediaplayer()
                 x.get_playitems()
 
