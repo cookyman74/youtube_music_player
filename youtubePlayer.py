@@ -117,9 +117,11 @@ class YtbListPlayer:
                 media = player.media_new(play_url)
                 media.get_mrl()
                 media_list.add_media(media)
+                print("유튭추가")
             else:
                 media = player.media_new(audio)
                 media_list.add_media(media)
+                print("mp3음악추가")
 
         self.media_player.set_media_list(media_list)
 

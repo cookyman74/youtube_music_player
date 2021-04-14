@@ -1,13 +1,18 @@
 from tkinter import *
+from tkinter import PhotoImage
 from tkinter import filedialog
 from tkinter import simpledialog
 
-
 import os
 from mutagen.mp3 import MP3
+from mutagen.id3 import ID3
+from PIL import ImageTk, Image
 
 import pygame
 import asyncio
+from urllib import request
+from urllib.parse import unquote
+
 from pygame import mixer
 from youtubePlayer import YtbListPlayer
 
@@ -15,7 +20,7 @@ pygame.mixer.init()
 
 # Title and dimensions
 root = Tk()
-root.geometry("600x280")
+root.geometry("650x420")
 root.resizable(False, False)
 root.title('쿠키맨 유튭MP3 플레이어')
 
@@ -28,31 +33,43 @@ class Audiobox(Frame):
         self.audio = audio
         self.master = master
         self.pack_propagate(0)
-        self.config(width=260, height=160, bg="#FFF")
+        self.config(width=300, height=350, bg="#FFF")
         self.grid(row=0, column=0, padx=10, pady=10)
 
         # Create Listbox
         def listbox_func(evnt):
             try:
                 self.audio.media_player.stop()
+                print("선택하면 멈춤")
             except:
                 pass
-            self.songOffset = 0
-            select_num = self.listbox.curselection()[0]
-            song_list = self.audio.play_list  #플레이리스트 받아오기
-            if self.listbox.curselection():
-                song = song_list[select_num]
-                if str(type(song)) == "<class 'pafy.backend_youtube_dl.YtdlPafy'>" and song:
-                    # 유튭플레이용 pafy객체인지에 따라 타이머바 초깃값 설정.
-                    input_pannel.timeBar.config(to=int(song.length))
-                    input_pannel.timeBar.set(0)
+            currentSelections = self.listbox.curselection()
+            if currentSelections:
+                index = currentSelections[0]
+                selected_song = self.audio.play_list[index]
+                if str(type(selected_song)) == "<class 'str'>":
+                    # mp3파일
+                    audio_mp3 = MP3(selected_song)
+                    audio_tags = ID3(selected_song)
+                    length = int(audio_mp3.info.length)
+                    with open('image.gif', 'wb') as img:
+                        img.write(audio_tags.getall("APIC")[0].data)
                 else:
-                    audio = MP3(song)
-                    print("mp3길이: ", int(audio.info.length))
-                    input_pannel.timeBar.config(to=int(audio.info.length))
-                    input_pannel.timeBar.set(0)
+                    # 유튭 음악
+                    audio_ytb = selected_song
+                    length = audio_ytb.length
+                    request.urlretrieve(audio_ytb.thumb, "image.gif")
 
-        self.listbox = Listbox(self, selectmode='extended', width=40)
+                test = Image.open("image.gif")
+                test = test.resize((250, 220), Image.ANTIALIAS)
+                img = ImageTk.PhotoImage(test)
+                input_pannel.imagBox.config(image=img)
+                input_pannel.imagBox.image = img
+                # input_pannel.imagBox.grid(row=5, column=0, sticky='nsew')
+                input_pannel.timeBar.config(to=int(length))
+                input_pannel.timeBar.set(0)
+
+        self.listbox = Listbox(self, selectmode='extended', width=40, height=350)
         self.listbox.bind('<<ListboxSelect>>', listbox_func)
         self.listbox.pack(side=LEFT)
 
@@ -73,16 +90,18 @@ class Audiobox(Frame):
         for song in files:
             self.listbox.insert(len(self.audio.play_list), os.path.splitext(os.path.basename(song))[0])
             self.audio.play_list.append(os.path.realpath(song))
+        self.audio.set_mediaplayer()
 
     def add_youtubelist(self, url):
         self.audio.set_playlist(url)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.audio.set_utbplay_items())
         # self.audio.set_utbplay_items()
-
         for audio in self.audio.play_list:
-            title = audio.title
-            self.listbox.insert(len(self.audio.play_list), title)
+            if str(type(audio)) != "<class 'str'>":
+                title = audio.title
+                self.listbox.insert(len(self.audio.play_list), title)
+        self.audio.set_mediaplayer()
 
     def add_playlist(self, directory):
         if not directory: return
@@ -94,6 +113,7 @@ class Audiobox(Frame):
             song_list[index] = os.path.realpath(directory) + '\\' + song
             self.listbox.insert(len(self.listbox.get(0, END)), noExtension)
             index += 1
+        self.audio.set_mediaplayer()
 
     def set_song(self, index):
         self.listbox.selection_clear(0, END)
@@ -101,22 +121,40 @@ class Audiobox(Frame):
         self.listbox.activate(index)
         self.current_time = 0
 
-        # song = self.audio.media_player[audiobox.listbox.curselection()[0]]
-        # input_pannel.timeBar.config(to=int(song.length))
+        selected_song = self.audio.play_list[index]
+        if str(type(selected_song)) == "<class 'str'>":
+            # mp3파일
+            audio_mp3 = MP3(selected_song)
+            audio_tags = ID3(selected_song)
+            length = int(audio_mp3.info.length)
+            with open('image.gif', 'wb') as img:
+                img.write(audio_tags.getall("APIC")[0].data)
+        else:
+            # 유튭 음악
+            audio_ytb = selected_song
+            length = audio_ytb.length
+            request.urlretrieve(audio_ytb.thumb, "image.gif")
+
+        test = Image.open("image.gif")
+        test = test.resize((250, 220), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(test)
+        input_pannel.imagBox.config(image=img)
+        input_pannel.imagBox.image = img
+        input_pannel.timeBar.config(to=int(length))
 
     def play_song(self):
         currentSelections = self.listbox.curselection()
         if len(currentSelections) == 0: return
-
-        self.audio.set_mediaplayer()
-
         player = self.audio.media_player
         currentIndex = self.listbox.index(ACTIVE)
-        player.play_item_at_index(currentIndex)
 
-        # 유튜브 플레이리스트
-        # if self.audio.media_player is None:
-        #     self.audio.set_utbplay_items()
+        if player.is_playing():
+            player.pause()
+        elif str(player.get_state()) in ['State.Paused']:
+            player.play()
+        else:
+            self.set_song(currentIndex)
+            player.play_item_at_index(currentIndex)
 
     def stop_song(self):
         player = self.audio.media_player
@@ -149,7 +187,7 @@ class InputPannel(Frame):
         super().__init__()
 
         # Pannel configuration
-        self.config(width=250, height=160, bg='#FFF')  # , bg="#bdbdbd"
+        self.config(width=400, height=400, bg='#FFF')  # , bg="#bdbdbd"
         self.grid(row=0, column=1, padx=0)
 
         # self.grid_propagate(0)
@@ -159,7 +197,7 @@ class InputPannel(Frame):
             self.volume.event_generate("<Button-3>", x=event.x, y=event.y)
             return
 
-        self.volume = Scale(root, length=150, from_=100, to=0)
+        self.volume = Scale(root, length=350, from_=100, to=0)
         self.volume.set(100)
         self.volume.config(command=lambda f: audiobox.set_volume(int(self.volume.get())))
         self.volume.bind('<Button-1>', setVolumeBar)
@@ -181,6 +219,7 @@ class InputPannel(Frame):
         self.timeBar.bind('<Button-3>', lambda f: mixer.music.stop())
 
         # Loop and Autoplay variables
+        # todo: autoplay, loop 기능 구현
         self.autoplay = IntVar()
         self.autoplay.set(False)
 
@@ -209,7 +248,6 @@ class InputPannel(Frame):
         self.timeBar.grid(row=1, column=0)
         autoplay.grid(row=2, column=0, sticky='nsew')
         loop.grid(row=3, column=0, sticky='nsew')
-
         bFrame.grid(row=4, column=0, sticky='nsew')
 
         self.back.pack(side=LEFT, fill=X, expand=1)
@@ -221,6 +259,17 @@ class InputPannel(Frame):
         self.pauseplay.config(command=audiobox.play_song)
         self.stop.config(command=audiobox.stop_song)
 
+        # https://stackoverflow.com/questions/57244479/how-to-display-an-image-in-tkinter-using-grid
+        # https://gomming.tistory.com/36
+        try:
+            img_file = Image.open("image.gif")
+        except:
+            img_file = Image.open("image.jpg")
+        img_file = img_file.resize((250, 220), Image.ANTIALIAS)
+        img = ImageTk.PhotoImage(img_file)
+        self.imagBox = Label(self, image=img)
+        self.imagBox.image = img
+        self.imagBox.grid(row=5, column=0, sticky='nsew')
 
 
 api_key = 'AIzaSyDWcZTZfUp_xqT_QF7eftkiaMSFvu2UaBU'
@@ -248,7 +297,22 @@ def createTab(name, added_commands, parent):
 
 # Timer update
 def update():
+    listbox_size = audiobox.listbox.size()
+    try:
+        if str(audiobox.audio.media_player.get_state()) in ['State.Playing']:
+            audio_source = audiobox.audio.media_player.get_media_player().get_media().get_mrl()
+            # https://stackoverflow.com/questions/16566069/url-decode-utf-8-in-python
+            audio_source = unquote(audio_source)
+            audio_name = os.path.splitext(os.path.basename(audio_source.split("/")[-1]))[0]
+            listbox_tuple = audiobox.listbox.get(0, listbox_size)
+            index = listbox_tuple.index(audio_name)
+            audiobox.set_song(index)
+    except Exception as err:
+        pass
+    
+    # print(listbox_tuple.index(audio_name))
     if audiobox.listbox.curselection():
+        # todo : 트래킹 바 구현
         player = audiobox.audio.media_player
         try:
             play_state = player.get_state()
@@ -259,21 +323,20 @@ def update():
         except Exception as err:
             play_state = False
 
-        if str(play_state) in ["State.Opening", "State.Playing"]:
+        if str(play_state) in ["State.Opening", "State.Playing", 'State.Paused']:
             running_length = player.get_media_player().get_time() / 1000
             running_minutes = int(running_length // 60)
             running_seconds = int(running_length % 60)
             startTime = "{0:02d} : {1:02d}".format(running_minutes, running_seconds)
-            # todo : 트래킹 바 구현
             # input_pannel.timeBar.set(audiobox.current_time)
         else:
-            print("*"*100)
             total_minutes = 0
             total_seconds = 0
             running_minutes = 0
             running_seconds = 0
             totalTime = "{0:02d} : {1:02d}".format(total_minutes, total_seconds)
             startTime = "{0:02d} : {1:02d}".format(running_minutes, running_seconds)
+
         input_pannel.timeLabel.config(text=startTime + ' | ' + totalTime)
     root.after(250, update)
 
@@ -281,7 +344,7 @@ def update():
 def clear_audiobox():
     mixer.music.stop()
     audiobox.listbox.delete(0, END)
-    audiobox.song_list = []
+    audiobox.audio.play_list = []
     input_pannel.timeLabel.config(text='00:00 | 00:00')
 
 
@@ -301,7 +364,6 @@ def remove_tracks():
     input_pannel.timeLabel.config(text='00:00 | 00:00')
 
 
-url = 'https://www.youtube.com/playlist?list=PL7283475-4cpXpbZJdgNWOVh0nvMbDCH7'
 createTab("File", [["Add youtube Url(s)", lambda: audiobox.add_youtubelist(
 simpledialog.askstring("url", "유튭플레이리스트URL")
 )],
