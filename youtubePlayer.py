@@ -6,11 +6,14 @@ import configparser
 import os
 import asyncio
 
+
 class YtbListPlayer:
     def __init__(self, api_key):
         self.play_list = []
+        self.media_list = ""
         self.media_player = ""
-        self.player = vlc.Instance()
+        self.events = None
+        self.finish = 0
         self.youtube = googleapiclient.discovery.build("youtube", "v3", developerKey=api_key)
 
     # https://stackoverflow.com/questions/45019711/how-to-make-vlc-repeat-the-whole-playlist-instead-of-only-current-item-using-lib
@@ -105,25 +108,28 @@ class YtbListPlayer:
             print(f"({index}) {audio.title} [{audio.duration}, {audio.length}] - 좋아요수: {audio.likes}")
 
     def set_mediaplayer(self):
+        # todo: 리스트 중복처리프로세스 제거
+        # creating Instance class object
         player = vlc.Instance()
-        # player = vlc.Instance('--verbose 3')
-        # 플레이어의 미디어 리스트 객체 생성.
-        media_list = player.media_list_new()
-        # 미디어리스트 플레이어 생성.
-        self.media_player = player.media_list_player_new()
+
+        # creating a media player object
+        media_player = vlc.MediaListPlayer()
+
+        # creating a media list object
+        self.media_list = vlc.MediaList()
+
         for audio in self.play_list:
             if str(type(audio)) != "<class 'str'>":
                 play_url = audio.getbestaudio(preftype="m4a").url
                 media = player.media_new(play_url)
                 media.get_mrl()
-                media_list.add_media(media)
-                print("유튭추가")
+                self.media_list.add_media(media)
             else:
                 media = player.media_new(audio)
-                media_list.add_media(media)
-                print("mp3음악추가")
+                self.media_list.add_media(media)
 
-        self.media_player.set_media_list(media_list)
+        self.media_player = media_player
+        self.media_player.set_media_list(self.media_list)
 
     def cmd_player(self, select_num):
         self.media_player.play_item_at_index(select_num)

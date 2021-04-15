@@ -2,21 +2,17 @@ from tkinter import *
 from tkinter import PhotoImage
 from tkinter import filedialog
 from tkinter import simpledialog
-
-import os
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3
-from PIL import ImageTk, Image
-
-import pygame
-import asyncio
 from urllib import request
-from urllib.parse import unquote
-
 from pygame import mixer
 from youtubePlayer import YtbListPlayer
+from PIL import ImageTk, Image
+from mutagen.mp3 import MP3
+from mutagen.id3 import ID3
+import os
+import pygame
+import asyncio
+import configparser
 
-pygame.mixer.init()
 
 # Title and dimensions
 root = Tk()
@@ -90,7 +86,7 @@ class Audiobox(Frame):
         for song in files:
             self.listbox.insert(len(self.audio.play_list), os.path.splitext(os.path.basename(song))[0])
             self.audio.play_list.append(os.path.realpath(song))
-        self.audio.set_mediaplayer()
+        self.player = self.audio.set_mediaplayer()
 
     def add_youtubelist(self, url):
         self.audio.set_playlist(url)
@@ -101,7 +97,7 @@ class Audiobox(Frame):
             if str(type(audio)) != "<class 'str'>":
                 title = audio.title
                 self.listbox.insert(len(self.audio.play_list), title)
-        self.audio.set_mediaplayer()
+        self.player = self.audio.set_mediaplayer()
 
     def add_playlist(self, directory):
         if not directory: return
@@ -113,7 +109,7 @@ class Audiobox(Frame):
             song_list[index] = os.path.realpath(directory) + '\\' + song
             self.listbox.insert(len(self.listbox.get(0, END)), noExtension)
             index += 1
-        self.audio.set_mediaplayer()
+        self.player = self.audio.set_mediaplayer()
 
     def set_song(self, index):
         self.listbox.selection_clear(0, END)
@@ -141,6 +137,18 @@ class Audiobox(Frame):
         input_pannel.imagBox.config(image=img)
         input_pannel.imagBox.image = img
         input_pannel.timeBar.config(to=int(length))
+
+    def song_finished(event):
+        global finish
+        print("\nEvent reports - finished")
+        finish = 1
+
+    def pos_callback(event, player):
+        sec = player.get_time() / 1000
+        m, s = divmod(sec, 60)
+        npos = event.u.new_position * 100
+        sys.stdout.write('\r%s %02d:%02d (%.2f%%)' % ('Position', m, s, npos))
+        sys.stdout.flush()
 
     def play_song(self):
         currentSelections = self.listbox.curselection()
@@ -273,6 +281,8 @@ class InputPannel(Frame):
 
 
 api_key = 'AIzaSyDWcZTZfUp_xqT_QF7eftkiaMSFvu2UaBU'
+# config = configparser.ConfigParser()
+# api_key = config['DEFAULT'].get("API_KEY")
 utbplayer = YtbListPlayer(api_key)
 
 audiobox = Audiobox(master=root, audio=utbplayer)
@@ -296,20 +306,19 @@ def createTab(name, added_commands, parent):
 
 
 # Timer update
+type_p = re.compile("^file://.*")
+
+
 def update():
-    listbox_size = audiobox.listbox.size()
     try:
-        if str(audiobox.audio.media_player.get_state()) in ['State.Playing']:
-            audio_source = audiobox.audio.media_player.get_media_player().get_media().get_mrl()
-            # https://stackoverflow.com/questions/16566069/url-decode-utf-8-in-python
-            audio_source = unquote(audio_source)
-            audio_name = os.path.splitext(os.path.basename(audio_source.split("/")[-1]))[0]
-            listbox_tuple = audiobox.listbox.get(0, listbox_size)
-            index = listbox_tuple.index(audio_name)
+        player = audiobox.audio.media_player
+        if str(player.get_state()) in ['State.Playing']:
+            audio_source = player.get_media_player().get_media()
+            index = int(audiobox.audio.media_list.index_of_item(audio_source))
             audiobox.set_song(index)
-    except Exception as err:
+    except:
         pass
-    
+
     # print(listbox_tuple.index(audio_name))
     if audiobox.listbox.curselection():
         # todo : 트래킹 바 구현
@@ -363,7 +372,6 @@ def remove_tracks():
         audiobox.listbox.delete(i)
     input_pannel.timeLabel.config(text='00:00 | 00:00')
 
-
 createTab("File", [["Add youtube Url(s)", lambda: audiobox.add_youtubelist(
 simpledialog.askstring("url", "유튭플레이리스트URL")
 )],
@@ -379,4 +387,3 @@ def destroy_func(event):
 root.bind('<Destroy>', destroy_func)
 root.after(100, update)
 root.mainloop()
-pygame.quit()
