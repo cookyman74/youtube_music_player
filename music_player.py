@@ -83,21 +83,27 @@ class Audiobox(Frame):
 
     def add_song(self, files):
         if not files: return
+        index = len(self.audio.play_list)
+        self.audio.add_list = []
+        print(index)
         for song in files:
-            self.listbox.insert(len(self.audio.play_list), os.path.splitext(os.path.basename(song))[0])
-            self.audio.play_list.append(os.path.realpath(song))
-        self.player = self.audio.set_mediaplayer()
+            index += 1
+            self.listbox.insert(index, os.path.splitext(os.path.basename(song))[0])
+            self.audio.add_list.append(os.path.realpath(song))
+        self.audio.set_mediaplayer()
 
     def add_youtubelist(self, url):
         self.audio.set_playlist(url)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.audio.set_utbplay_items())
-        # self.audio.set_utbplay_items()
-        for audio in self.audio.play_list:
+
+        index = len(self.audio.play_list)
+        for audio in self.audio.add_list:
             if str(type(audio)) != "<class 'str'>":
+                index += 1
                 title = audio.title
-                self.listbox.insert(len(self.audio.play_list), title)
-        self.player = self.audio.set_mediaplayer()
+                self.listbox.insert(index, title)
+        self.audio.set_mediaplayer()
 
     def add_playlist(self, directory):
         if not directory: return
@@ -380,10 +386,5 @@ simpledialog.askstring("url", "유튭플레이리스트URL")
                    ["Add Playlist dir", lambda: audiobox.add_playlist(filedialog.askdirectory())]], menuBar)
 createTab("Edit", [['Remove Track(s)', remove_tracks], ["Clear Audiobosx", clear_audiobox]], menuBar)
 
-
-def destroy_func(event):
-    mixer.music.stop()
-
-root.bind('<Destroy>', destroy_func)
 root.after(100, update)
 root.mainloop()

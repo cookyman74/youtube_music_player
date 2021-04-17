@@ -10,7 +10,9 @@ import asyncio
 class YtbListPlayer:
     def __init__(self, api_key):
         self.play_list = []
+        self.add_list = []
         self.media_list = ""
+        self.player = vlc.Instance()
         self.media_player = ""
         self.events = None
         self.finish = 0
@@ -62,10 +64,12 @@ class YtbListPlayer:
         :param url:
         :return:
         '''
+        self.add_list = []
         try:
             loop = asyncio.get_event_loop()
             audio = await loop.run_in_executor(None, pafy.new, url)
-            await self.play_list.append(audio)
+            # await self.play_list.append(audio)
+            await self.add_list.append(audio)
         except:
             pass
 
@@ -108,27 +112,23 @@ class YtbListPlayer:
             print(f"({index}) {audio.title} [{audio.duration}, {audio.length}] - 좋아요수: {audio.likes}")
 
     def set_mediaplayer(self):
-        # todo: 리스트 중복처리프로세스 제거
-        # creating Instance class object
-        player = vlc.Instance()
-
-        # creating a media player object
-        media_player = vlc.MediaListPlayer()
-
         # creating a media list object
-        self.media_list = vlc.MediaList()
+        if self.media_list == "":
+            self.media_player = vlc.MediaListPlayer()
+            self.media_list = vlc.MediaList()
 
-        for audio in self.play_list:
+        # for audio in self.play_list:
+        for audio in self.add_list:
             if str(type(audio)) != "<class 'str'>":
                 play_url = audio.getbestaudio(preftype="m4a").url
-                media = player.media_new(play_url)
+                media = self.player.media_new(play_url)
                 media.get_mrl()
                 self.media_list.add_media(media)
             else:
-                media = player.media_new(audio)
+                media = self.player.media_new(audio)
                 self.media_list.add_media(media)
 
-        self.media_player = media_player
+        self.play_list.extend(self.add_list)
         self.media_player.set_media_list(self.media_list)
 
     def cmd_player(self, select_num):
