@@ -9,9 +9,7 @@ from PIL import ImageTk, Image
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3
 import os
-import pygame
 import asyncio
-import configparser
 
 
 # Title and dimensions
@@ -312,9 +310,6 @@ def createTab(name, added_commands, parent):
 
 
 # Timer update
-type_p = re.compile("^file://.*")
-
-
 def update():
     try:
         player = audiobox.audio.media_player
@@ -357,7 +352,7 @@ def update():
 
 
 def clear_audiobox():
-    mixer.music.stop()
+    audiobox.audio.media_player.stop()
     audiobox.listbox.delete(0, END)
     audiobox.audio.play_list = []
     input_pannel.timeLabel.config(text='00:00 | 00:00')
