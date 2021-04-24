@@ -1,7 +1,9 @@
 # User-specific stuff
+.ipynb_checkpoints
 .idea/*
+.temp/
 build/*
 download/*
 dist/
-images/*
 config.ini
+*.spec
