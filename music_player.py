@@ -7,6 +7,7 @@ from youtubePlayer import YtbListPlayer
 from PIL import ImageTk, Image
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3
+import configparser
 import os
 import asyncio
 
@@ -91,7 +92,8 @@ class Audiobox(Frame):
         for audio in self.audio.add_list:
             if str(type(audio)) != "<class 'str'>":
                 index += 1
-                title = audio.title
+                # title = ''.join(char for char in audio.title if char.isalnum())
+                title = re.sub(r"[^a-zA-Z0-9\'\"【​】\[\]#|가-힣()\-\.\,]", "_", audio.title)
                 self.listbox.insert(index, title)
         self.audio.set_mediaplayer()
 
@@ -266,7 +268,7 @@ class InputPannel(Frame):
         # Placing the items
         self.timeLabel.grid(row=0, column=0, sticky='nsew')
         self.volume.grid(row=0, column=3)
-        self.timeBar.grid(row=1, column=0)
+        # self.timeBar.grid(row=1, column=0)
         autoplay.grid(row=2, column=0, sticky='nsew')
         loop.grid(row=3, column=0, sticky='nsew')
         bFrame.grid(row=4, column=0, sticky='nsew')
@@ -294,11 +296,11 @@ if __name__ == "__main__":
     root.title('쿠키맨 유튭MP3 플레이어')
     root.iconbitmap('images\\youtube.ico')
 
-    api_key = 'AIzaSyDWcZTZfUp_xqT_QF7eftkiaMSFvu2UaBU'
-    # config = configparser.ConfigParser()
-    # api_key = config['DEFAULT'].get("API_KEY")
-    utbplayer = YtbListPlayer(api_key)
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    api_key = config['DEFAULT'].get("API_KEY")
 
+    utbplayer = YtbListPlayer(api_key=api_key)
     audiobox = Audiobox(master=root, audio=utbplayer)
     input_pannel = InputPannel(master=root, audiobox=audiobox)
 

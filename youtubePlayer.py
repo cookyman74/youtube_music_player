@@ -8,8 +8,8 @@ import asyncio
 
 
 class YtbListPlayer:
-    def __init__(self, api_key):
-        self.player = vlc.Instance()
+    def __init__(self, api_key, *options):
+        self.vlc_player = vlc.Instance(*options)
         self.play_list = []
         self.add_list = []
         self.media_list = ""
@@ -120,11 +120,11 @@ class YtbListPlayer:
         for audio in self.add_list:
             if str(type(audio)) != "<class 'str'>":
                 play_url = audio.getbestaudio(preftype="m4a").url
-                media = self.player.media_new(play_url)
+                media = self.vlc_player.media_new(play_url)
                 media.get_mrl()
                 self.media_list.add_media(media)
             else:
-                media = self.player.media_new(audio)
+                media = self.vlc_player.media_new(audio)
                 self.media_list.add_media(media)
         # add add_list to play_list
         self.play_list.extend(self.add_list)
