@@ -1,0 +1,70 @@
+name: AI Code Review
+on:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  code_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3.5.3
+        with:
+          fetch-depth: 0  # 전체 히스토리를 가져옵니다
+
+      - name: Get branch name
+        id: branch-name
+        run: echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+
+      - name: Fetch and checkout branch
+        run: |
+          git fetch origin ${{ steps.branch-name.outputs.branch }}
+          git checkout ${{ steps.branch-name.outputs.branch }}
+          git pull origin ${{ steps.branch-name.outputs.branch }}
+
+      - name: Install Python
+        uses: actions/setup-python@v4.6.1
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install GitPython
+
+      - name: Run AI Code Review
+        id: review_step
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python .github/scripts/review_code.py > review_output.json
+          if [ $? -ne 0 ]; then
+            echo "Python script failed"
+            cat review_output.json
+            exit 1
+          fi
+
+      - name: Post review as a commit comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs');
+            const review = JSON.parse(fs.readFileSync('review_output.json', 'utf8'));
+            
+            let commentBody = `## AI 코드 리뷰\n\n### 요약\n${review.summary}\n\n`;
+            if (review.details.length > 0) {
+              commentBody += '### 세부 사항\n';
+              review.details.forEach(detail => {
+                commentBody += `#### ${detail.file}\n${detail.comment}\n\n`;
+              });
+            }
+            
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: commentBody
+            });
