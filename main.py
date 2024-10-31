@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, simpledialog
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import os
@@ -8,7 +8,48 @@ from mutagen import File
 from mutagen.easyid3 import EasyID3
 import time
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
+import yt_dlp
+from pydub import AudioSegment
+from pydub.playback import play
+import ffmpeg
+import asyncio
 
+
+class YtbListPlayer:
+    def __init__(self):
+        self.play_list = []
+
+    def set_play_list(self, playlist_url):
+        """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목을 추출"""
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'skip_download': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            playlist_info = ydl.extract_info(playlist_url, download=False)
+            for entry in playlist_info['entries']:
+                self.play_list.append({
+                    'title': entry.get('title'),
+                    'url': entry.get('url')
+                })
+
+    def download_and_convert_audio(self, url, title):
+        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 FFmpeg로 변환 후 경로 반환"""
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': f'downloaded_audios/{title}.webm',
+            'quiet': True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        input_path = f'downloaded_audios/{title}.webm'
+        output_path = f'downloaded_audios/{title}.mp3'
+        ffmpeg.input(input_path).output(output_path).run(overwrite_output=True)
+
+        os.remove(input_path)
+        return output_path
 
 class ModernPurplePlayer(ctk.CTk):
     def __init__(self):
@@ -41,6 +82,12 @@ class ModernPurplePlayer(ctk.CTk):
         # Create tabs
         self.create_tab_view()
 
+        self.ytb_player = YtbListPlayer()
+
+        # 오디오 엔진 초기화
+        pygame.mixer.init()
+        pygame.mixer.music.set_volume(0.5)
+
         # Create main content area
         self.create_main_player()
         self.create_playlist_view()
@@ -59,6 +106,36 @@ class ModernPurplePlayer(ctk.CTk):
         """Initialize the audio playback engine"""
         pygame.mixer.init()
         pygame.mixer.music.set_volume(0.5)
+
+    def add_youtube_playlist(self):
+        """사용자로부터 YouTube 플레이리스트 URL을 입력받고 재생 목록 생성"""
+        url = simpledialog.askstring("YouTube Playlist", "Enter YouTube Playlist URL:")
+        if url:
+            self.ytb_player.set_play_list(url)
+            for video in self.ytb_player.play_list:
+                audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
+                self.playlist.append({'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}})
+            self.update_playlist_ui()
+            if self.current_index == -1 and self.playlist:
+                self.current_index = 0
+                self.play_current()
+
+    def add_files(self):
+        """로컬 음악 파일 추가"""
+        files = filedialog.askopenfilenames(filetypes=[("Audio Files", "*.mp3 *.wav *.ogg"), ("All Files", "*.*")])
+        self.add_to_playlist(files)
+
+    def add_to_playlist(self, files):
+        """플레이리스트에 파일 추가"""
+        for file in files:
+            self.playlist.append({
+                'path': file,
+                'metadata': self.get_audio_metadata(file)
+            })
+        self.update_playlist_ui()
+        if self.current_index == -1 and self.playlist:
+            self.current_index = 0
+            self.play_current()
 
     def create_tab_view(self):
         """Create top tab navigation with equal width buttons"""
@@ -334,8 +411,7 @@ class ModernPurplePlayer(ctk.CTk):
             frame.pack_forget()
 
         if not hasattr(self, 'menu_frame'):
-            self.menu_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
-
+            self.menu_frame = ctk.CTkFrame(self, fg_color="#1E1B2E")
             options = [
                 ("Add Music Files", "🎵"),
                 ("Add YouTube Playlist", "▶️"),
@@ -343,40 +419,22 @@ class ModernPurplePlayer(ctk.CTk):
                 ("Settings", "⚙️"),
                 ("About", "ℹ️")
             ]
-
             for text, icon in options:
-                option_frame = ctk.CTkFrame(
-                    self.menu_frame,
-                    fg_color=self.purple_mid,
-                    corner_radius=10
-                )
+                option_frame = ctk.CTkFrame(self.menu_frame, fg_color="#2D2640", corner_radius=10)
                 option_frame.pack(fill="x", padx=20, pady=5)
-
-                btn = ctk.CTkButton(
-                    option_frame,
-                    text=f"{icon} {text}",
-                    fg_color="transparent",
-                    hover_color=self.purple_light,
-                    anchor="w",
-                    command=lambda t=text: self.handle_menu_option(t)
-                )
+                btn = ctk.CTkButton(option_frame, text=f"{icon} {text}", fg_color="transparent", hover_color="#6B5B95",
+                                    anchor="w", command=lambda t=text: self.handle_menu_option(t))
                 btn.pack(fill="x", padx=10, pady=10)
+        self.menu_frame.pack(fill="both", expand=True)
 
         self.menu_frame.pack(fill="both", expand=True)
 
     def handle_menu_option(self, option):
         """Handle menu option selection"""
         if option == "Add Music Files":
-            files = filedialog.askopenfilenames(
-                filetypes=[
-                    ("Audio Files", "*.mp3 *.wav *.ogg"),
-                    ("All Files", "*.*")
-                ]
-            )
-            self.add_to_playlist(files)
+            self.add_files()
         elif option == "Add YouTube Playlist":
-            # YouTube 플레이리스트 구현 예정
-            pass
+            self.add_youtube_playlist()
         elif option == "Set Playlist Directory":
             directory = filedialog.askdirectory()
             if directory:
@@ -495,55 +553,38 @@ class ModernPurplePlayer(ctk.CTk):
                 'album': 'Unknown Album'
             }
 
+    def play_current(self):
+        """현재 트랙 재생"""
+        if 0 <= self.current_index < len(self.playlist):
+            current_track = self.playlist[self.current_index]
+            try:
+                pygame.mixer.music.load(current_track['path'])
+                pygame.mixer.music.play()
+                self.is_playing = True
+                self.play_button.configure(text="⏸")
+                self.update_song_info(current_track)
+            except Exception as e:
+                print(f"Error playing file: {e}")
+
     def update_playlist_ui(self):
-        """Update the playlist user interface"""
-        # Clear existing song frames
+        """UI의 플레이리스트 업데이트"""
         for frame in self.song_frames:
             frame.destroy()
         self.song_frames.clear()
-
-        # Add songs to playlist
         for i, song in enumerate(self.playlist):
-            song_frame = ctk.CTkFrame(
-                self.playlist_container,
-                fg_color=self.purple_mid,
-                corner_radius=10
-            )
+            song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
             song_frame.pack(fill="x", pady=5)
             self.song_frames.append(song_frame)
-
-            # Song info container
             info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
-
-            # Play button
-            play_btn = ctk.CTkButton(
-                info_frame,
-                text="▶",
-                width=30,
-                fg_color="transparent",
-                hover_color=self.purple_light,
-                command=lambda idx=i: self.play_selected(idx)
-            )
+            play_btn = ctk.CTkButton(info_frame, text="▶", width=30, fg_color="transparent", hover_color="#6B5B95",
+                                     command=lambda idx=i: self.play_selected(idx))
             play_btn.pack(side="left", padx=(0, 10))
-
-            # Song details
             metadata = song['metadata']
-            title_label = ctk.CTkLabel(
-                info_frame,
-                text=metadata['title'],
-                font=("Helvetica", 14, "bold"),
-                anchor="w"
-            )
+            title_label = ctk.CTkLabel(info_frame, text=metadata['title'], font=("Helvetica", 14, "bold"), anchor="w")
             title_label.pack(fill="x", pady=(0, 2))
-
-            artist_label = ctk.CTkLabel(
-                info_frame,
-                text=metadata['artist'],
-                font=("Helvetica", 12),
-                text_color="gray",
-                anchor="w"
-            )
+            artist_label = ctk.CTkLabel(info_frame, text=metadata['artist'], font=("Helvetica", 12), text_color="gray",
+                                        anchor="w")
             artist_label.pack(fill="x")
 
     def filter_playlist(self, event=None):
