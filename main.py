@@ -660,15 +660,27 @@ class ModernPurplePlayer(ctk.CTk):
             info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
 
-            play_btn = ctk.CTkButton(
-                info_frame,
-                text="▶",
-                width=30,
-                fg_color="transparent",
-                hover_color="#6B5B95",
-                command=lambda idx=i: self.play_selected(idx)
-            )
-            play_btn.pack(side="left", padx=(0, 10))
+            # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
+            if song['path'] is not None:
+                play_btn = ctk.CTkButton(
+                    info_frame,
+                    text="▶",
+                    width=30,
+                    fg_color="transparent",
+                    hover_color="#6B5B95",
+                    command=lambda idx=i: self.play_selected(idx)
+                )
+                play_btn.pack(side="left", padx=(0, 10))
+            else:
+                download_btn = ctk.CTkButton(
+                    info_frame,
+                    text="Download",
+                    width=30,
+                    fg_color="transparent",
+                    hover_color="#FF4B8C",
+                    command=lambda s=song: self.download_audio(s)
+                )
+                download_btn.pack(side="left", padx=(0, 10))
 
             # 데이터베이스에서 가져온 트랙 정보를 사용하여 제목과 아티스트를 표시
             title_label = ctk.CTkLabel(
@@ -687,6 +699,27 @@ class ModernPurplePlayer(ctk.CTk):
                 anchor="w"
             )
             artist_label.pack(fill="x")
+
+    def download_audio(self, song):
+        """곡의 URL을 통해 오디오를 다운로드하고 파일 경로를 데이터베이스에 저장"""
+        title = song['title']
+        url = song['url']
+
+        # YtbListPlayer 인스턴스를 사용하여 다운로드 및 변환
+        audio_path = self.ytb_player.download_and_convert_audio(url, title)
+
+        if audio_path:
+            # 다운로드 성공 시 데이터베이스에 파일 경로 업데이트
+            playlist_id = self.db_manager.get_playlist_id_by_url(url)
+            if playlist_id is not None:
+                self.db_manager.update_track_path(playlist_id, title, audio_path)
+                # 다운로드된 파일 경로로 UI 업데이트
+                song['path'] = audio_path
+                self.update_playlist_ui()  # UI 다시 로드
+            else:
+                print("해당 URL에 대한 플레이리스트를 찾을 수 없습니다.")
+        else:
+            print("다운로드 실패: 파일을 다운로드할 수 없습니다.")
 
     def filter_playlist(self, event=None):
         """Filter playlist based on search entry"""

@@ -72,3 +72,22 @@ class DatabaseManager:
             playlists = cursor.fetchall()
             print("플레이리스트 가져오기:", playlists)  # 데이터 확인을 위한 출력
             return playlists
+
+    def update_track_path(self, playlist_id, title, file_path):
+        """특정 트랙의 파일 경로를 업데이트"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE tracks
+                SET file_path = ?
+                WHERE playlist_id = ? AND title = ?
+            ''', (file_path, playlist_id, title))
+            conn.commit()
+
+    def get_playlist_id_by_url(self, url):
+        """특정 URL을 가진 플레이리스트의 ID를 반환"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM playlists WHERE url = ?', (url,))
+            result = cursor.fetchone()
+            return result[0] if result else None
