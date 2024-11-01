@@ -7,10 +7,11 @@ import pygame
 from mutagen import File
 from mutagen.easyid3 import EasyID3
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
-import yt_dlp
-import ffmpeg
 from database_manager import DatabaseManager
 from ytbList_player import YtbListPlayer
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 # 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
@@ -126,17 +127,137 @@ class ModernPurplePlayer(ctk.CTk):
             self.current_index = 0
             self.play_current()
 
-    def update_playlist_ui(self):
-        """플레이리스트 UI 업데이트"""
-        # 기존 플레이리스트 UI 요소 초기화 및 기존 내용 제거
-        for widget in self.playlist_container.winfo_children():
-            widget.destroy()
+    # def update_playlist_ui(self):
+    #     """플레이리스트 UI 업데이트"""
+    #     # 기존 플레이리스트 UI 요소 초기화 및 기존 내용 제거
+    #     for widget in self.playlist_container.winfo_children():
+    #         widget.destroy()
+    #
+    #     # 데이터베이스에서 모든 플레이리스트 트랙 정보 가져오기
+    #     self.playlist.clear()
+    #     playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
+    #
+    #     print(playlists)
+    #     for playlist_id, title, url in playlists:
+    #         tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+    #         for track in tracks:
+    #             track_info = {
+    #                 'title': track[0],
+    #                 'artist': track[1],
+    #                 'thumbnail': track[2],
+    #                 'url': track[3],
+    #                 'path': track[4]
+    #             }
+    #             self.playlist.append(track_info)
+    #
+    #     # self.playlist를 기반으로 UI 구성
+    #     for track in self.playlist:
+    #         song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
+    #         song_frame.pack(fill="x", pady=5)
+    #
+    #         title_label = ctk.CTkLabel(song_frame, text=track['title'], font=("Helvetica", 14, "bold"))
+    #         title_label.pack(side="left", padx=5)
+    #
+    #         artist_label = ctk.CTkLabel(song_frame, text=track['artist'], font=("Helvetica", 12), text_color="gray")
+    #         artist_label.pack(side="left", padx=5)
+    #
+    #     self.playlist_container.update_idletasks()
 
-        # 데이터베이스에서 모든 플레이리스트 트랙 정보 가져오기
+    async def async_download(self, song, song_frame, loading_label):
+        """비동기 다운로드 처리"""
+        loop = asyncio.get_event_loop()
+
+        # 다운로드 비동기 실행
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(executor, self.download_audio, song)
+
+        # 다운로드 성공 여부에 따라 UI 업데이트
+        if result:
+            self.update_playlist_ui()  # UI 갱신
+        else:
+            loading_label.destroy()  # 로딩바 제거 후 실패 메시지 표시
+            download_btn = ctk.CTkButton(
+                song_frame,
+                text="Download",
+                width=30,
+                fg_color="transparent",
+                hover_color="#FF4B8C",
+                command=lambda s=song: self.start_download(s, song_frame)
+            )
+            download_btn.pack(side="left", padx=(0, 10))
+
+            # 실패 메시지 표시
+            error_label = ctk.CTkLabel(
+                song_frame,
+                text="Download failed. Try again.",
+                font=("Helvetica", 10),
+                text_color="red"
+            )
+            error_label.pack(fill="x", padx=(0, 10))
+
+    def update_ui_after_download(self, result, song, song_frame, loading_label, download_btn):
+        """다운로드 결과에 따라 UI 업데이트"""
+        loading_label.pack_forget()  # 로딩바 제거
+
+        if result:
+            # 성공 시 UI 갱신
+            self.update_playlist_ui()
+        else:
+            # 실패 시 Download 버튼과 오류 메시지 표시
+            download_btn.pack(side="left", padx=(0, 10))  # 기존 Download 버튼 다시 표시
+
+            error_label = ctk.CTkLabel(
+                song_frame,
+                text="Download failed. Try again.",
+                font=("Helvetica", 10),
+                text_color="red"
+            )
+            error_label.pack(fill="x", padx=(0, 10))
+
+    def download_audio_thread(self, song, song_frame, loading_label, download_btn):
+        """다운로드 작업을 별도 스레드에서 실행하고 UI 갱신"""
+        # 다운로드 실행
+        result = self.download_audio(song)
+
+        # 메인 스레드에서 UI 업데이트
+        self.playlist_container.after(
+            0,
+            lambda: self.update_ui_after_download(
+                result,
+                song,
+                song_frame,
+                loading_label,
+                download_btn
+            )
+        )
+
+    def start_download(self, song, song_frame):
+        """다운로드를 시작하고 로딩바를 표시"""
+        # 기존 Download 버튼 찾기 및 숨기기
+        existing_download_btn = song_frame.winfo_children()[0]
+        existing_download_btn.pack_forget()  # 기존 Download 버튼 숨기기
+
+        # 로딩 메시지 추가
+        loading_label = ctk.CTkLabel(song_frame, text="Loading...", text_color="gray")
+        loading_label.pack(side="left", padx=(0, 10))
+
+        # 다운로드를 별도의 스레드에서 실행
+        download_thread = threading.Thread(target=self.download_audio_thread,
+                                           args=(song, song_frame, loading_label, existing_download_btn))
+        download_thread.start()
+
+    def update_playlist_ui(self):
+        """UI의 플레이리스트를 최신 데이터로 업데이트"""
+        # 기존 UI 요소 초기화
+        for frame in self.song_frames:
+            frame.destroy()
+
+        # 데이터베이스에서 모든 트랙 정보 가져오기
+        self.song_frames.clear()
         self.playlist.clear()
+
         playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
 
-        print(playlists)
         for playlist_id, title, url in playlists:
             tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
             for track in tracks:
@@ -149,18 +270,53 @@ class ModernPurplePlayer(ctk.CTk):
                 }
                 self.playlist.append(track_info)
 
-        # self.playlist를 기반으로 UI 구성
-        for track in self.playlist:
+        for i, song in enumerate(self.playlist):
             song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
             song_frame.pack(fill="x", pady=5)
+            self.song_frames.append(song_frame)
 
-            title_label = ctk.CTkLabel(song_frame, text=track['title'], font=("Helvetica", 14, "bold"))
-            title_label.pack(side="left", padx=5)
+            info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
+            info_frame.pack(fill="x", padx=10, pady=10)
 
-            artist_label = ctk.CTkLabel(song_frame, text=track['artist'], font=("Helvetica", 12), text_color="gray")
-            artist_label.pack(side="left", padx=5)
+            # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
+            if song['path'] is not None:
+                play_btn = ctk.CTkButton(
+                    info_frame,
+                    text="▶",
+                    width=30,
+                    fg_color="transparent",
+                    hover_color="#6B5B95",
+                    command=lambda idx=i: self.play_selected(idx)
+                )
+                play_btn.pack(side="left", padx=(0, 10))
+            else:
+                download_btn = ctk.CTkButton(
+                    info_frame,
+                    text="Download",
+                    width=30,
+                    fg_color="transparent",
+                    hover_color="#FF4B8C",
+                    command=lambda s=song, frame=song_frame: self.start_download(s, frame)
+                )
+                download_btn.pack(side="left", padx=(0, 10))
 
-        self.playlist_container.update_idletasks()
+            # 데이터베이스에서 가져온 트랙 정보를 사용하여 제목과 아티스트를 표시
+            title_label = ctk.CTkLabel(
+                info_frame,
+                text=song['title'],
+                font=("Helvetica", 14, "bold"),
+                anchor="w"
+            )
+            title_label.pack(fill="x", pady=(0, 2))
+
+            artist_label = ctk.CTkLabel(
+                info_frame,
+                text=song['artist'],
+                font=("Helvetica", 12),
+                text_color="gray",
+                anchor="w"
+            )
+            artist_label.pack(fill="x")
 
     def update_album_ui(self):
         """앨범(플레이리스트) UI 업데이트"""
@@ -630,76 +786,6 @@ class ModernPurplePlayer(ctk.CTk):
                 'album': 'Unknown Album'
             }
 
-    def update_playlist_ui(self):
-        """UI의 플레이리스트를 최신 데이터로 업데이트"""
-        # 기존 UI 요소 초기화
-        for frame in self.song_frames:
-            frame.destroy()
-
-        # 데이터베이스에서 모든 트랙 정보 가져오기
-        self.song_frames.clear()
-        playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
-
-        for playlist_id, title, url in playlists:
-            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
-            for track in tracks:
-                track_info = {
-                    'title': track[0],
-                    'artist': track[1],
-                    'thumbnail': track[2],
-                    'url': track[3],
-                    'path': track[4]
-                }
-                self.playlist.append(track_info)
-
-        for i, song in enumerate(self.playlist):
-            song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
-            song_frame.pack(fill="x", pady=5)
-            self.song_frames.append(song_frame)
-
-            info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
-            info_frame.pack(fill="x", padx=10, pady=10)
-
-            # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
-            if song['path'] is not None:
-                play_btn = ctk.CTkButton(
-                    info_frame,
-                    text="▶",
-                    width=30,
-                    fg_color="transparent",
-                    hover_color="#6B5B95",
-                    command=lambda idx=i: self.play_selected(idx)
-                )
-                play_btn.pack(side="left", padx=(0, 10))
-            else:
-                download_btn = ctk.CTkButton(
-                    info_frame,
-                    text="Download",
-                    width=30,
-                    fg_color="transparent",
-                    hover_color="#FF4B8C",
-                    command=lambda s=song: self.download_audio(s)
-                )
-                download_btn.pack(side="left", padx=(0, 10))
-
-            # 데이터베이스에서 가져온 트랙 정보를 사용하여 제목과 아티스트를 표시
-            title_label = ctk.CTkLabel(
-                info_frame,
-                text=song['title'],
-                font=("Helvetica", 14, "bold"),
-                anchor="w"
-            )
-            title_label.pack(fill="x", pady=(0, 2))
-
-            artist_label = ctk.CTkLabel(
-                info_frame,
-                text=song['artist'],
-                font=("Helvetica", 12),
-                text_color="gray",
-                anchor="w"
-            )
-            artist_label.pack(fill="x")
-
     def download_audio(self, song):
         """곡의 URL을 통해 오디오를 다운로드하고 파일 경로를 데이터베이스에 저장"""
         title = song['title']
@@ -709,17 +795,17 @@ class ModernPurplePlayer(ctk.CTk):
         audio_path = self.ytb_player.download_and_convert_audio(url, title)
 
         if audio_path:
-            # 다운로드 성공 시 데이터베이스에 파일 경로 업데이트
             playlist_id = self.db_manager.get_playlist_id_by_url(url)
             if playlist_id is not None:
                 self.db_manager.update_track_path(playlist_id, title, audio_path)
-                # 다운로드된 파일 경로로 UI 업데이트
-                song['path'] = audio_path
-                self.update_playlist_ui()  # UI 다시 로드
+                song['path'] = audio_path  # 성공 시 경로 업데이트
+                return True
             else:
                 print("해당 URL에 대한 플레이리스트를 찾을 수 없습니다.")
         else:
             print("다운로드 실패: 파일을 다운로드할 수 없습니다.")
+
+        return False  # 실패 시 False 반환
 
     def filter_playlist(self, event=None):
         """Filter playlist based on search entry"""
