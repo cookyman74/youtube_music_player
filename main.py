@@ -9,44 +9,8 @@ from mutagen.easyid3 import EasyID3
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
 import yt_dlp
 import ffmpeg
-
-
-class YtbListPlayer:
-    def __init__(self):
-        self.play_list = []
-
-    def set_play_list(self, playlist_url):
-        """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목을 추출"""
-        ydl_opts = {
-            'quiet': True,
-            'extract_flat': True,
-            'skip_download': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            playlist_info = ydl.extract_info(playlist_url, download=False)
-            for entry in playlist_info['entries']:
-                self.play_list.append({
-                    'title': entry.get('title'),
-                    'url': entry.get('url')
-                })
-
-    def download_and_convert_audio(self, url, title):
-        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 FFmpeg로 변환 후 경로 반환"""
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': f'downloaded_audios/{title}.webm',
-            'quiet': True
-        }
-        # 오디오 다운로드 및 변환 경로 생성
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        input_path = f'downloaded_audios/{title}.webm'
-        output_path = f'downloaded_audios/{title}.mp3'
-        ffmpeg.input(input_path).output(output_path).run(overwrite_output=True)
-
-        os.remove(input_path)
-        return output_path
+from database_manager import DatabaseManager
+from ytbList_player import YtbListPlayer
 
 # 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
@@ -67,6 +31,19 @@ class ModernPurplePlayer(ctk.CTk):
         self.title("Music Player")
         self.geometry("400x600")
         self.configure(fg_color=self.purple_dark)
+        self.playlist = []
+
+        # DatabaseManager 초기화
+        self.db_manager = DatabaseManager()
+
+        # YtbListPlayer 초기화 및 DB에서 플레이리스트 로드
+        self.ytb_player = YtbListPlayer(self.db_manager)
+        self.load_playlists_from_db()
+
+        # UI 요소 생성
+        # self.create_main_ui()
+
+
 
         # Initialize audio engine
         self.initialize_audio_engine()
@@ -76,15 +53,10 @@ class ModernPurplePlayer(ctk.CTk):
         self.is_playing = False
         self.playlist = []
         self.current_index = -1
-        self.ytb_player = YtbListPlayer()
+        # self.ytb_player = YtbListPlayer()
 
         # Create tabs
         self.create_tab_view()
-
-
-        # 오디오 엔진 초기화
-        pygame.mixer.init()
-        pygame.mixer.music.set_volume(0.5)
 
         # Create main content area
         self.create_main_player()
@@ -102,8 +74,24 @@ class ModernPurplePlayer(ctk.CTk):
 
     def initialize_audio_engine(self):
         """Initialize the audio playback engine"""
-        pygame.mixer.init()
-        pygame.mixer.music.set_volume(0.5)
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+            pygame.mixer.music.set_volume(0.5)
+
+    def load_playlists_from_db(self):
+        """데이터베이스에서 모든 플레이리스트와 트랙을 로드"""
+        playlists = self.db_manager.get_all_playlists()
+        for playlist_id, title, url in playlists:
+            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+            for track in tracks:
+                track_info = {
+                    'title': track[0],
+                    'artist': track[1],
+                    'thumbnail': track[2],
+                    'url': track[3],
+                    'path': track[4]
+                }
+                self.playlist.append(track_info)
 
     def add_youtube_playlist(self):
         """사용자로부터 YouTube 플레이리스트 URL을 입력받고 재생 목록 생성"""
@@ -112,7 +100,10 @@ class ModernPurplePlayer(ctk.CTk):
             self.ytb_player.set_play_list(url)
             for video in self.ytb_player.play_list:
                 audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
-                self.playlist.append({'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}})
+                # 유효한 파일만 플레이리스트에 추가
+                if audio_path:
+                    self.playlist.append(
+                        {'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}})
             self.update_playlist_ui()
             if self.current_index == -1 and self.playlist:
                 self.current_index = 0
@@ -134,6 +125,11 @@ class ModernPurplePlayer(ctk.CTk):
         if self.current_index == -1 and self.playlist:
             self.current_index = 0
             self.play_current()
+
+    def update_playlist_ui(self):
+        """UI의 플레이리스트 업데이트"""
+        # 플레이리스트 UI를 새로 고칩니다. 예를 들어, self.playlist 리스트를 기반으로 목록을 표시합니다.
+        pass
 
     def create_tab_view(self):
         """Create top tab navigation with equal width buttons"""
@@ -550,19 +546,6 @@ class ModernPurplePlayer(ctk.CTk):
                 'artist': 'Unknown Artist',
                 'album': 'Unknown Album'
             }
-
-    def play_current(self):
-        """현재 트랙 재생"""
-        if 0 <= self.current_index < len(self.playlist):
-            current_track = self.playlist[self.current_index]
-            try:
-                pygame.mixer.music.load(current_track['path'])
-                pygame.mixer.music.play()
-                self.is_playing = True
-                self.play_button.configure(text="⏸")
-                self.update_song_info(current_track)
-            except Exception as e:
-                print(f"Error playing file: {e}")
 
     def update_playlist_ui(self):
         """UI의 플레이리스트 업데이트"""
