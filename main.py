@@ -896,6 +896,7 @@ class ModernPurplePlayer(ctk.CTk):
         """Play selected song from playlist"""
         self.current_index = index
         self.play_current()
+        self.show_view("player")
 
     def play_current(self):
         """Play the current track"""
