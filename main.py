@@ -1,6 +1,8 @@
 import tkinter as tk
+from io import BytesIO
 from tkinter import ttk, filedialog, simpledialog
 import customtkinter as ctk
+import requests
 from PIL import Image, ImageTk
 import os
 import pygame
@@ -11,12 +13,15 @@ from database_manager import DatabaseManager
 from ytbList_player import YtbListPlayer
 import asyncio
 import threading
+import queue
 from concurrent.futures import ThreadPoolExecutor
 
 # 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.update_queue = queue.Queue()  # UI 업데이트를 위한 큐 생성
+        self.after(100, self.check_for_updates)  # 큐를 주기적으로 확인하는 함수 호출
 
         # 테마 설정
         ctk.set_appearance_mode("dark")
@@ -94,21 +99,125 @@ class ModernPurplePlayer(ctk.CTk):
                 }
                 self.playlist.append(track_info)
 
+    def check_for_updates(self):
+        """Queue에서 업데이트가 있는지 확인하고 UI 갱신"""
+        try:
+            while True:
+                update_func = self.update_queue.get_nowait()
+                update_func()  # 큐에서 가져온 함수를 실행하여 UI 갱신
+        except queue.Empty:
+            pass
+        finally:
+            # 일정 시간마다 큐를 확인하여 업데이트가 있을 경우 UI 반영
+            self.after(100, self.check_for_updates)
+
     def add_youtube_playlist(self):
-        """사용자로부터 YouTube 플레이리스트 URL을 입력받고 재생 목록 생성"""
+        """사용자로부터 YouTube 플레이리스트 URL을 입력받고 비동기로 재생 목록 생성"""
         url = simpledialog.askstring("YouTube Playlist", "Enter YouTube Playlist URL:")
         if url:
-            self.ytb_player.set_play_list(url)
-            for video in self.ytb_player.play_list:
-                audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
-                # 유효한 파일만 플레이리스트에 추가
-                if audio_path:
-                    self.playlist.append(
-                        {'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}})
-            self.update_playlist_ui()
-            if self.current_index == -1 and self.playlist:
-                self.current_index = 0
-                self.play_current()
+            # 다운로드 작업을 별도의 스레드에서 시작
+            download_thread = threading.Thread(target=self.download_playlist, args=(url,))
+            download_thread.start()
+
+    def download_playlist(self, url):
+        """YouTube 플레이리스트를 다운로드하고 UI를 업데이트하는 메소드 (별도 스레드에서 실행)"""
+        self.ytb_player.set_play_list(url)
+
+        # 다운로드 작업 수행 및 UI 업데이트
+        for video in self.ytb_player.play_list:
+            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
+
+            if audio_path:
+                # 비동기적으로 UI에 추가하기 위해 메인 스레드에서 실행
+                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title']))
+
+        # 다운로드 완료 후 UI 갱신
+        self.playlist_container.after(0, self.update_playlist_ui)
+
+    def add_song_to_playlist(self, audio_path, title):
+        """UI에 곡을 추가하는 메소드"""
+        self.playlist.append({
+            'path': audio_path,
+            'metadata': {'title': title, 'artist': 'YouTube'}
+        })
+        self.update_playlist_ui()
+
+
+    def download_youtube_playlist(self, url):
+        """YouTube 플레이리스트 URL로부터 재생 목록을 다운로드하고 UI에 실시간 업데이트"""
+        self.ytb_player.set_play_list(url)
+
+        for video in self.ytb_player.play_list:
+            # 각 곡을 다운로드
+            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
+
+            # 유효한 파일만 playlist에 추가
+            if audio_path:
+                self.playlist.append(
+                    {'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}}
+                )
+
+                # 실시간 UI 업데이트를 큐에 추가
+                self.update_queue.put(self.partial_update_playlist_ui)
+
+        # 모든 다운로드가 완료된 후 UI를 최종 갱신
+        self.update_queue.put(self.update_playlist_ui)
+
+        # 첫 곡 재생 설정
+        if self.current_index == -1 and self.playlist:
+            self.current_index = 0
+            self.play_current()
+
+    def partial_update_playlist_ui(self):
+        """실시간으로 추가된 곡을 UI에 반영"""
+        # 새로운 곡만 추가하는 방식으로 UI 업데이트
+        song = self.playlist[-1]  # 방금 추가된 곡
+        song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
+        song_frame.pack(fill="x", pady=5)
+        self.song_frames.append(song_frame)
+
+        info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
+        info_frame.pack(fill="x", padx=10, pady=10)
+
+        # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
+        if song['path'] is not None:
+            play_btn = ctk.CTkButton(
+                info_frame,
+                text="▶",
+                width=30,
+                fg_color="transparent",
+                hover_color="#6B5B95",
+                command=lambda idx=len(self.playlist) - 1: self.play_selected(idx)
+            )
+            play_btn.pack(side="left", padx=(0, 10))
+        else:
+            download_btn = ctk.CTkButton(
+                info_frame,
+                text="Download",
+                width=30,
+                fg_color="transparent",
+                hover_color="#FF4B8C",
+                command=lambda s=song, frame=song_frame: self.start_download(s, frame)
+            )
+            download_btn.pack(side="left", padx=(0, 10))
+
+        # 데이터베이스에서 가져온 트랙 정보를 사용하여 제목과 아티스트를 표시
+        title_label = ctk.CTkLabel(
+            info_frame,
+            text=song['metadata']['title'],
+            font=("Helvetica", 14, "bold"),
+            anchor="w"
+        )
+        title_label.pack(fill="x", pady=(0, 2))
+
+        artist_label = ctk.CTkLabel(
+            info_frame,
+            text=song['metadata']['artist'],
+            font=("Helvetica", 12),
+            text_color="gray",
+            anchor="w"
+        )
+        artist_label.pack(fill="x")
 
     def add_files(self):
         """로컬 음악 파일 추가"""
@@ -251,6 +360,7 @@ class ModernPurplePlayer(ctk.CTk):
         # 기존 UI 요소 초기화
         for frame in self.song_frames:
             frame.destroy()
+        self.song_frames.clear()
 
         # 데이터베이스에서 모든 트랙 정보 가져오기
         self.song_frames.clear()
@@ -290,6 +400,11 @@ class ModernPurplePlayer(ctk.CTk):
 
             info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
+
+            # Display the thumbnail if available
+            if song.get('thumbnail'):
+                thumbnail_label = ctk.CTkLabel(info_frame, image=self.load_thumbnail(song['thumbnail']))
+                thumbnail_label.pack(side="left", padx=(0, 10))
 
             # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
             if song['path'] is not None:
@@ -331,6 +446,16 @@ class ModernPurplePlayer(ctk.CTk):
             )
             artist_label.pack(fill="x")
 
+    def load_thumbnail(self, thumbnail_path):
+        """썸네일 파일 경로에서 이미지를 로드하여 CTkImage로 변환"""
+        try:
+            image = Image.open(thumbnail_path)
+            image = image.resize((80, 80), Image.LANCZOS)  # 썸네일 크기 조정
+            return ImageTk.PhotoImage(image)
+        except Exception as e:
+            print(f"썸네일 로딩 실패: {e}")
+            return None  # 로딩 실패 시 None 반환
+
     def load_and_show_playlist(self, playlist_id):
         """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
         # playlist UI를 업데이트하고 탭 이동
@@ -358,10 +483,48 @@ class ModernPurplePlayer(ctk.CTk):
             url_label = ctk.CTkLabel(playlist_frame, text=url, font=("Helvetica", 12), text_color="gray", anchor="w")
             url_label.pack(fill="x", padx=5, pady=(0, 5))
 
-            # 클릭 시 해당 playlist_id를 가진 playlist로 이동
+            # 클릭 이벤트를 프레임과 라벨 모두에 바인딩
             playlist_frame.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
+            title_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
+            url_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
 
         self.album_grid_frame.update_idletasks()
+
+    def load_and_show_playlist(self, playlist_id):
+        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
+        # playlist UI를 업데이트하고 탭 이동
+        try:
+            # playlist_frame이 없으면 생성
+            if not hasattr(self, 'playlist_frame'):
+                self.create_playlist_view()
+
+            # 특정 playlist의 트랙만 가져오도록 수정
+            self.playlist.clear()  # 기존 플레이리스트 초기화
+            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+
+            for track in tracks:
+                file_path = track[4]
+                if file_path:
+                    file_path = os.path.abspath(file_path)
+
+                track_info = {
+                    'title': track[0],
+                    'artist': track[1],
+                    'thumbnail': track[2],
+                    'url': track[3],
+                    'path': file_path
+                }
+                self.playlist.append(track_info)
+
+            # UI 업데이트
+            self.update_playlist_ui()
+
+            # Playlist 탭으로 이동
+            self.select_tab("Playlist")
+            self.playlist_frame.pack(fill="both", expand=True)
+
+        except Exception as e:
+            print(f"플레이리스트 로드 중 오류 발생: {e}")
 
     def create_tab_view(self):
         """Create top tab navigation with equal width buttons"""
@@ -422,7 +585,7 @@ class ModernPurplePlayer(ctk.CTk):
         # Album art
         self.album_frame = ctk.CTkFrame(self.player_frame, fg_color=self.purple_mid)
         self.album_frame.pack(pady=20, padx=20)
-        self.load_album_art("default_album.png")
+        self.load_album_art("assets/images/album_default.png")
 
         # Initialize waveform visualizer
         self.wave_canvas = tk.Canvas(
@@ -517,29 +680,28 @@ class ModernPurplePlayer(ctk.CTk):
     def load_album_art(self, path):
         """Load album art image"""
         try:
-            if not os.path.exists('images'):
-                os.makedirs('images')
+            # 기본 썸네일 경로 설정 (썸네일 디렉토리와 파일 경로가 올바르게 지정되어야 함)
+            thumbnail_path = path if path and os.path.exists(path) else 'assets/images/album_default.jpg'
 
-            if not os.path.dirname(path):
-                path = os.path.join('images', path)
+            # 이미지 로드 및 크기 조정
+            img = Image.open(thumbnail_path)
+            img = img.resize((200, 200), Image.LANCZOS)  # 메인 플레이어에서 사용할 크기
 
-            if os.path.exists(path):
-                img = Image.open(path)
-            else:
-                img = Image.new('RGB', (200, 200), self.purple_light)
+            # ImageTk.PhotoImage로 변환하여 CTkLabel에 표시
+            photo = ImageTk.PhotoImage(img)
 
-            img = img.resize((200, 200), Image.Resampling.LANCZOS)
-            photo = ctk.CTkImage(light_image=img, dark_image=img, size=(200, 200))
-
+            # 이전 앨범 아트 이미지를 제거하고 새 이미지로 업데이트
             for widget in self.album_frame.winfo_children():
                 widget.destroy()
 
+            # CTkLabel에 이미지 추가
             label = ctk.CTkLabel(self.album_frame, image=photo, text="")
-            label.image = photo
+            label.image = photo  # 참조 유지
             label.pack(fill="both", expand=True)
 
         except Exception as e:
-            print(f"Error loading album art: {e}")
+            print(f"앨범 아트 로딩 실패: {e}")
+            # 실패 시 기본 이미지로 표시
             for widget in self.album_frame.winfo_children():
                 widget.destroy()
 
@@ -914,6 +1076,13 @@ class ModernPurplePlayer(ctk.CTk):
                 pygame.mixer.music.play()
                 self.is_playing = True
                 self.play_button.configure(text="⏸")
+
+                # 현재 트랙의 썸네일 정보로 앨범 아트 업데이트
+                if 'thumbnail' in current_track:
+                    self.load_album_art(current_track['thumbnail'])
+                else:
+                    self.load_album_art(None)  # 기본 이미지 표시
+
                 self.update_song_info(current_track)
 
                 # Start waveform visualization

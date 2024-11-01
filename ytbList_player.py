@@ -1,12 +1,28 @@
+import configparser
+
+import requests
 import yt_dlp
 from yt_dlp import YoutubeDL
 import os
 import ffmpeg
+import configparser
+
 
 class YtbListPlayer:
     def __init__(self, db_manager):
         self.db_manager = db_manager
+        self.thumbnail_dir = configparser.ConfigParser
         self.play_list = []
+
+        # Config 파일 읽기
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+
+        # 썸네일 디렉토리 설정
+        self.thumbnail_dir = config.get('Directories', 'thumbnail_dir', fallback='thumbnails')
+
+        # 썸네일 디렉토리 생성
+        os.makedirs(self.thumbnail_dir, exist_ok=True)
 
     def set_play_list(self, playlist_url):
         """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목, 썸네일을 추출하여 데이터베이스에 저장"""
@@ -14,6 +30,7 @@ class YtbListPlayer:
             'quiet': True,
             'extract_flat': True,
             'skip_download': True,
+            'format': 'bestaudio/best',
         }
         with YoutubeDL(ydl_opts) as ydl:
             playlist_info = ydl.extract_info(playlist_url, download=False)
@@ -26,6 +43,13 @@ class YtbListPlayer:
                 title = entry.get('title', 'Unknown Title')
                 artist = 'YouTube'  # YouTube에서 제공되지 않을 수 있음
                 thumbnail = entry.get('thumbnail')
+                video_id = entry.get('id')
+
+                # 만약 썸네일이 None이라면 기본 URL 설정 (YouTube에서는 고화질 썸네일을 제공)
+                if not thumbnail and video_id:
+                    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                    thumbnail = self.download_thumbnail(thumbnail_url, video_id) if thumbnail_url else None
+                print("12313132123", thumbnail)
                 url = entry.get('url')
 
                 # 오디오 다운로드 및 변환 후 파일 경로 저장
@@ -43,6 +67,22 @@ class YtbListPlayer:
                     'url': url,
                     'path': file_path  # 저장된 파일 경로
                 })
+
+    def download_thumbnail(self, url, video_id):
+        """썸네일 URL에서 이미지를 다운로드하여 로컬에 저장하고 파일 경로 반환"""
+        try:
+            response = requests.get(url, stream=True)
+            if response.status_code == 200:
+                thumbnail_path = os.path.join(self.thumbnail_dir, f"{video_id}.jpg")
+                with open(thumbnail_path, 'wb') as f:
+                    for chunk in response.iter_content(1024):
+                        f.write(chunk)
+                return thumbnail_path
+            else:
+                print(f"썸네일 다운로드 실패: {url} - 상태 코드 {response.status_code}")
+        except Exception as e:
+            print(f"썸네일 다운로드 오류: {e}")
+        return None
 
     def download_and_convert_audio(self, url, title):
         """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 FFmpeg로 변환 후 경로 반환"""
