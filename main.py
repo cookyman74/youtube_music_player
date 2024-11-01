@@ -246,7 +246,7 @@ class ModernPurplePlayer(ctk.CTk):
                                            args=(song, song_frame, loading_label, existing_download_btn))
         download_thread.start()
 
-    def update_playlist_ui(self):
+    def update_playlist_ui(self, album_id=None):
         """UI의 플레이리스트를 최신 데이터로 업데이트"""
         # 기존 UI 요소 초기화
         for frame in self.song_frames:
@@ -256,10 +256,23 @@ class ModernPurplePlayer(ctk.CTk):
         self.song_frames.clear()
         self.playlist.clear()
 
-        playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
-
-        for playlist_id, title, url in playlists:
-            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+        if album_id is None:
+            # 전체 플레이리스트를 가져오는 경우
+            playlists = self.db_manager.get_all_playlists()
+            for playlist_id, title, url in playlists:
+                tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+                for track in tracks:
+                    track_info = {
+                        'title': track[0],
+                        'artist': track[1],
+                        'thumbnail': track[2],
+                        'url': track[3],
+                        'path': track[4]
+                    }
+                    self.playlist.append(track_info)
+        else:
+            # 특정 앨범 ID에 해당하는 트랙만 가져오는 경우
+            tracks = self.db_manager.get_tracks_by_playlist(album_id)
             for track in tracks:
                 track_info = {
                     'title': track[0],
@@ -318,6 +331,12 @@ class ModernPurplePlayer(ctk.CTk):
             )
             artist_label.pack(fill="x")
 
+    def load_and_show_playlist(self, playlist_id):
+        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
+        # playlist UI를 업데이트하고 탭 이동
+        self.update_playlist_ui(album_id=playlist_id)
+        self.select_tab("Playlist")  # Playlist 탭으로 이동
+
     def update_album_ui(self):
         """앨범(플레이리스트) UI 업데이트"""
         if not hasattr(self, 'album_grid_frame'):
@@ -338,6 +357,9 @@ class ModernPurplePlayer(ctk.CTk):
 
             url_label = ctk.CTkLabel(playlist_frame, text=url, font=("Helvetica", 12), text_color="gray", anchor="w")
             url_label.pack(fill="x", padx=5, pady=(0, 5))
+
+            # 클릭 시 해당 playlist_id를 가진 playlist로 이동
+            playlist_frame.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
 
         self.album_grid_frame.update_idletasks()
 
@@ -811,43 +833,51 @@ class ModernPurplePlayer(ctk.CTk):
         """Filter playlist based on search entry"""
         search_term = self.search_entry.get().lower()
 
-        # Clear existing song frames
+        # 기존 플레이리스트 UI 요소 초기화
         for frame in self.song_frames:
             frame.destroy()
         self.song_frames.clear()
 
-        # Add filtered songs to playlist
+        # 검색어에 따라 self.playlist에서 필터링된 곡들만 표시
         for i, song in enumerate(self.playlist):
-            metadata = song['metadata']
-            if (search_term in metadata['title'].lower() or
-                    search_term in metadata['artist'].lower()):
-                song_frame = ctk.CTkFrame(
-                    self.playlist_container,
-                    fg_color=self.purple_mid,
-                    corner_radius=10
-                )
+            title = song.get('title', '').lower()
+            artist = song.get('artist', '').lower()
+
+            # 제목 또는 아티스트가 검색어를 포함하는 경우에만 표시
+            if search_term in title or search_term in artist:
+                song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
                 song_frame.pack(fill="x", pady=5)
                 self.song_frames.append(song_frame)
 
-                # Song info container
                 info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
                 info_frame.pack(fill="x", padx=10, pady=10)
 
-                # Play button
-                play_btn = ctk.CTkButton(
-                    info_frame,
-                    text="▶",
-                    width=30,
-                    fg_color="transparent",
-                    hover_color=self.purple_light,
-                    command=lambda idx=i: self.play_selected(idx)
-                )
-                play_btn.pack(side="left", padx=(0, 10))
+                # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
+                if song['path']:
+                    play_btn = ctk.CTkButton(
+                        info_frame,
+                        text="▶",
+                        width=30,
+                        fg_color="transparent",
+                        hover_color="#6B5B95",
+                        command=lambda idx=i: self.play_selected(idx)
+                    )
+                    play_btn.pack(side="left", padx=(0, 10))
+                else:
+                    download_btn = ctk.CTkButton(
+                        info_frame,
+                        text="Download",
+                        width=30,
+                        fg_color="transparent",
+                        hover_color="#FF4B8C",
+                        command=lambda s=song, frame=song_frame: self.start_download(s, frame)
+                    )
+                    download_btn.pack(side="left", padx=(0, 10))
 
-                # Song details
+                # 곡 제목과 아티스트 정보 표시
                 title_label = ctk.CTkLabel(
                     info_frame,
-                    text=metadata['title'],
+                    text=song['title'],
                     font=("Helvetica", 14, "bold"),
                     anchor="w"
                 )
@@ -855,7 +885,7 @@ class ModernPurplePlayer(ctk.CTk):
 
                 artist_label = ctk.CTkLabel(
                     info_frame,
-                    text=metadata['artist'],
+                    text=song['artist'],
                     font=("Helvetica", 12),
                     text_color="gray",
                     anchor="w"
