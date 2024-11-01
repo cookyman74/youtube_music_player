@@ -40,11 +40,6 @@ class ModernPurplePlayer(ctk.CTk):
         self.ytb_player = YtbListPlayer(self.db_manager)
         self.load_playlists_from_db()
 
-        # UI 요소 생성
-        # self.create_main_ui()
-
-
-
         # Initialize audio engine
         self.initialize_audio_engine()
 
@@ -84,12 +79,17 @@ class ModernPurplePlayer(ctk.CTk):
         for playlist_id, title, url in playlists:
             tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
             for track in tracks:
+                # 파일 경로가 None이 아니면 절대 경로로 변환, 그렇지 않으면 None 그대로 유지
+                file_path = track[4]
+                if file_path:
+                    file_path = os.path.abspath(file_path)
+
                 track_info = {
                     'title': track[0],
                     'artist': track[1],
                     'thumbnail': track[2],
                     'url': track[3],
-                    'path': track[4]
+                    'path': file_path
                 }
                 self.playlist.append(track_info)
 
@@ -127,9 +127,63 @@ class ModernPurplePlayer(ctk.CTk):
             self.play_current()
 
     def update_playlist_ui(self):
-        """UI의 플레이리스트 업데이트"""
-        # 플레이리스트 UI를 새로 고칩니다. 예를 들어, self.playlist 리스트를 기반으로 목록을 표시합니다.
-        pass
+        """플레이리스트 UI 업데이트"""
+        # 기존 플레이리스트 UI 요소 초기화 및 기존 내용 제거
+        for widget in self.playlist_container.winfo_children():
+            widget.destroy()
+
+        # 데이터베이스에서 모든 플레이리스트 트랙 정보 가져오기
+        self.playlist.clear()
+        playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
+
+        print(playlists)
+        for playlist_id, title, url in playlists:
+            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+            for track in tracks:
+                track_info = {
+                    'title': track[0],
+                    'artist': track[1],
+                    'thumbnail': track[2],
+                    'url': track[3],
+                    'path': track[4]
+                }
+                self.playlist.append(track_info)
+
+        # self.playlist를 기반으로 UI 구성
+        for track in self.playlist:
+            song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
+            song_frame.pack(fill="x", pady=5)
+
+            title_label = ctk.CTkLabel(song_frame, text=track['title'], font=("Helvetica", 14, "bold"))
+            title_label.pack(side="left", padx=5)
+
+            artist_label = ctk.CTkLabel(song_frame, text=track['artist'], font=("Helvetica", 12), text_color="gray")
+            artist_label.pack(side="left", padx=5)
+
+        self.playlist_container.update_idletasks()
+
+    def update_album_ui(self):
+        """앨범(플레이리스트) UI 업데이트"""
+        if not hasattr(self, 'album_grid_frame'):
+            self.create_album_view()  # album_grid_frame이 없는 경우 초기화
+
+        # UI 요소 초기화 및 기존 내용 제거
+        for widget in self.album_grid_frame.winfo_children():
+            widget.destroy()
+
+        # 모든 플레이리스트를 데이터베이스에서 가져와 표시
+        playlists = self.db_manager.get_all_playlists()
+        for playlist_id, title, url in playlists:
+            playlist_frame = ctk.CTkFrame(self.album_grid_frame, fg_color="#2D2640", corner_radius=10)
+            playlist_frame.pack(fill="x", pady=5, padx=10)
+
+            title_label = ctk.CTkLabel(playlist_frame, text=title, font=("Helvetica", 14, "bold"), anchor="w")
+            title_label.pack(fill="x", padx=5, pady=(5, 0))
+
+            url_label = ctk.CTkLabel(playlist_frame, text=url, font=("Helvetica", 12), text_color="gray", anchor="w")
+            url_label.pack(fill="x", padx=5, pady=(0, 5))
+
+        self.album_grid_frame.update_idletasks()
 
     def create_tab_view(self):
         """Create top tab navigation with equal width buttons"""
@@ -160,6 +214,28 @@ class ModernPurplePlayer(ctk.CTk):
 
         # Set first tab as active
         self.tab_buttons[0].configure(fg_color=self.pink_accent, text_color="white")
+
+    def create_album_view(self):
+        """Album 뷰를 생성하고 album_grid_frame 초기화"""
+        if not hasattr(self, 'album_grid_frame'):
+            self.album_grid_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
+
+            # Search bar (optional)
+            search_frame = ctk.CTkFrame(self.album_grid_frame, fg_color=self.purple_mid)
+            search_frame.pack(fill="x", padx=20, pady=10)
+
+            ctk.CTkEntry(
+                search_frame,
+                placeholder_text="Search Albums...",
+                fg_color=self.purple_dark,
+                border_color=self.purple_light
+            ).pack(fill="x", padx=10, pady=10)
+
+            album_container = ctk.CTkScrollableFrame(
+                self.album_grid_frame,
+                fg_color=self.purple_dark
+            )
+            album_container.pack(fill="both", expand=True, padx=20)
 
     def create_main_player(self):
         """Create main player view"""
@@ -301,6 +377,7 @@ class ModernPurplePlayer(ctk.CTk):
     def create_playlist_view(self):
         """Create playlist view"""
         self.playlist_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
+        self.playlist_frame.pack(fill="both", expand=True)
 
         # Search bar
         search_frame = ctk.CTkFrame(self.playlist_frame, fg_color=self.purple_mid)
@@ -321,6 +398,7 @@ class ModernPurplePlayer(ctk.CTk):
         self.search_entry.pack(side="left", fill="x", expand=True, padx=(5, 0))
         self.search_entry.bind('<KeyRelease>', self.filter_playlist)
 
+        # 스크롤 가능한 플레이리스트 컨테이너
         self.playlist_container = ctk.CTkScrollableFrame(
             self.playlist_frame,
             fg_color=self.purple_dark,
@@ -328,7 +406,7 @@ class ModernPurplePlayer(ctk.CTk):
         self.playlist_container.pack(fill="both", expand=True, padx=20, pady=10)
 
         self.song_frames = []
-        self.update_playlist_ui()
+        self.update_playlist_ui()  # 플레이리스트 UI 업데이트
 
     def create_search_view(self):
         """Create search view"""
@@ -395,9 +473,14 @@ class ModernPurplePlayer(ctk.CTk):
         if tab == "Menu":
             self.show_menu_view()
         elif tab == "Playlist":
+            self.create_playlist_view()
+            self.update_playlist_ui()
             self.playlist_frame.pack(fill="both", expand=True)
         elif tab == "Album":
-            self.show_album_view()
+            self.create_album_view()
+            self.update_album_ui()
+            self.album_grid_frame.pack(fill="both", expand=True)
+
 
     def show_menu_view(self):
         """Show menu options"""
@@ -548,24 +631,61 @@ class ModernPurplePlayer(ctk.CTk):
             }
 
     def update_playlist_ui(self):
-        """UI의 플레이리스트 업데이트"""
+        """UI의 플레이리스트를 최신 데이터로 업데이트"""
+        # 기존 UI 요소 초기화
         for frame in self.song_frames:
             frame.destroy()
+
+        # 데이터베이스에서 모든 트랙 정보 가져오기
         self.song_frames.clear()
+        playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
+
+        for playlist_id, title, url in playlists:
+            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+            for track in tracks:
+                track_info = {
+                    'title': track[0],
+                    'artist': track[1],
+                    'thumbnail': track[2],
+                    'url': track[3],
+                    'path': track[4]
+                }
+                self.playlist.append(track_info)
+
         for i, song in enumerate(self.playlist):
             song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
             song_frame.pack(fill="x", pady=5)
             self.song_frames.append(song_frame)
+
             info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
             info_frame.pack(fill="x", padx=10, pady=10)
-            play_btn = ctk.CTkButton(info_frame, text="▶", width=30, fg_color="transparent", hover_color="#6B5B95",
-                                     command=lambda idx=i: self.play_selected(idx))
+
+            play_btn = ctk.CTkButton(
+                info_frame,
+                text="▶",
+                width=30,
+                fg_color="transparent",
+                hover_color="#6B5B95",
+                command=lambda idx=i: self.play_selected(idx)
+            )
             play_btn.pack(side="left", padx=(0, 10))
-            metadata = song['metadata']
-            title_label = ctk.CTkLabel(info_frame, text=metadata['title'], font=("Helvetica", 14, "bold"), anchor="w")
+
+            # 데이터베이스에서 가져온 트랙 정보를 사용하여 제목과 아티스트를 표시
+            title_label = ctk.CTkLabel(
+                info_frame,
+                text=song['title'],
+                font=("Helvetica", 14, "bold"),
+                anchor="w"
+            )
             title_label.pack(fill="x", pady=(0, 2))
-            artist_label = ctk.CTkLabel(info_frame, text=metadata['artist'], font=("Helvetica", 12), text_color="gray",
-                                        anchor="w")
+
+            artist_label = ctk.CTkLabel(
+                info_frame,
+                text=song['artist'],
+                font=("Helvetica", 12),
+                text_color="gray",
+                anchor="w"
+            )
             artist_label.pack(fill="x")
 
     def filter_playlist(self, event=None):
@@ -633,6 +753,12 @@ class ModernPurplePlayer(ctk.CTk):
         if 0 <= self.current_index < len(self.playlist):
             current_track = self.playlist[self.current_index]
 
+            # 파일 경로 확인
+            file_path = current_track.get('path')
+            if not file_path or not os.path.isfile(file_path):
+                print(f"Error: '{file_path}' 파일이 존재하지 않거나 유효하지 않습니다.")
+                return
+
             try:
                 pygame.mixer.music.load(current_track['path'])
                 pygame.mixer.music.play()
@@ -686,6 +812,16 @@ class ModernPurplePlayer(ctk.CTk):
 
         # Schedule next update
         self.after(100, self.update_player)
+
+    def update_song_info(self, track):
+        """현재 재생 중인 곡의 정보를 UI에 업데이트합니다."""
+        # 트랙 제목과 아티스트 정보를 업데이트
+        title = track.get('title', 'Unknown Title')
+        artist = track.get('artist', 'Unknown Artist')
+
+        # 제목과 아티스트 라벨에 텍스트를 설정합니다.
+        self.song_title_label.configure(text=title)
+        self.artist_label.configure(text=artist)
 
     def get_audio_length(self):
         """Get length of current audio file"""
