@@ -6,13 +6,9 @@ import os
 import pygame
 from mutagen import File
 from mutagen.easyid3 import EasyID3
-import time
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
 import yt_dlp
-from pydub import AudioSegment
-from pydub.playback import play
 import ffmpeg
-import asyncio
 
 
 class YtbListPlayer:
@@ -41,6 +37,7 @@ class YtbListPlayer:
             'outtmpl': f'downloaded_audios/{title}.webm',
             'quiet': True
         }
+        # 오디오 다운로드 및 변환 경로 생성
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
@@ -51,11 +48,12 @@ class YtbListPlayer:
         os.remove(input_path)
         return output_path
 
+# 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Theme settings
+        # 테마 설정
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
 
@@ -73,16 +71,16 @@ class ModernPurplePlayer(ctk.CTk):
         # Initialize audio engine
         self.initialize_audio_engine()
 
-        # Initialize player state
+        # 재생 상태 초기화.
         self.current_audio = None
         self.is_playing = False
         self.playlist = []
         self.current_index = -1
+        self.ytb_player = YtbListPlayer()
 
         # Create tabs
         self.create_tab_view()
 
-        self.ytb_player = YtbListPlayer()
 
         # 오디오 엔진 초기화
         pygame.mixer.init()
