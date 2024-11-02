@@ -8,125 +8,85 @@ import io
 
 
 class AudioWaveformVisualizer:
-    def __init__(self, canvas, color, bg_color):
+    def __init__(self, canvas, waveform_color, background_color):
         self.canvas = canvas
-        self.color = color
-        self.bg_color = bg_color
-        self.chunk_size = 1024
-        self.current_frame = 0
-        self.waveform_points = []
+        self.waveform_color = waveform_color
+        self.background_color = background_color
+        self.wave_points = []
+        self.wave_height = self.canvas.winfo_height()
 
-    def load_audio(self, audio_path):
-        """Load and process audio file for visualization"""
-        try:
-            # Convert audio to WAV format if needed
-            if not audio_path.endswith('.wav'):
-                audio = AudioSegment.from_file(audio_path)
-                audio = audio.set_channels(1)  # Convert to mono
-                wav_io = io.BytesIO()
-                audio.export(wav_io, format='wav')
-                wav_io.seek(0)
-                audio_file = wave.open(wav_io)
-            else:
-                audio_file = wave.open(audio_path, 'rb')
-
-            # Get audio properties
-            self.channels = audio_file.getnchannels()
-            self.sample_width = audio_file.getsampwidth()
-            self.sample_rate = audio_file.getframerate()
-            self.num_frames = audio_file.getnframes()
-
-            # Read all frames and calculate RMS values
-            frames = audio_file.readframes(self.num_frames)
-            self.waveform_points = self._calculate_waveform_points(frames)
-
-            audio_file.close()
-            return True
-
-        except Exception as e:
-            print(f"Error loading audio: {e}")
-            return False
-
-    def _calculate_waveform_points(self, frames):
-        """Calculate RMS values for visualization"""
-        points = []
-        for i in range(0, len(frames), self.chunk_size):
-            chunk = frames[i:i + self.chunk_size]
-            rms = audioop.rms(chunk, self.sample_width)
-            # Normalize RMS value
-            normalized_rms = min(1.0, rms / 32768)
-            points.append(normalized_rms)
-        return points
-
-    def draw_waveform(self, start_frame=0, width=None, height=None):
+    def draw_waveform(self, points):
         """Draw waveform on canvas"""
-        if not self.waveform_points:
+        self.canvas.delete("all")
+        if not points:
             return
 
-        # Clear canvas
-        self.canvas.delete("all")
+        # 캔버스 크기 가져오기
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
 
-        # Get canvas dimensions
-        width = width or self.canvas.winfo_width()
-        height = height or self.canvas.winfo_height()
-        center_y = height / 2
+        # 중심선 그리기
+        center_y = height // 2
 
-        # Calculate how many points to display
-        points_to_display = min(len(self.waveform_points), width // 3)
-        start_idx = int(start_frame / self.num_frames * len(self.waveform_points))
+        # 파형 그리기
+        for i in range(len(points) - 1):
+            x1 = i * (width / len(points))
+            x2 = (i + 1) * (width / len(points))
+            y1 = center_y + (points[i] * height / 2)
+            y2 = center_y + (points[i + 1] * height / 2)
 
-        # Draw waveform bars
-        bar_width = 2
-        gap_width = 1
-        for i in range(points_to_display):
-            if start_idx + i >= len(self.waveform_points):
-                break
+            self.canvas.create_line(x1, y1, x2, y2, fill=self.waveform_color)
 
-            amplitude = self.waveform_points[start_idx + i]
-            bar_height = amplitude * (height * 0.8)  # Use 80% of canvas height
+    def generate_wave_points(self, num_points=50):
+        """Generate random wave points for visualization"""
+        import random
+        import math
 
-            x = i * (bar_width + gap_width)
+        points = []
+        for i in range(num_points):
+            # 사인파와 랜덤 노이즈를 조합
+            wave = math.sin(i * 0.2) * 0.3
+            noise = random.uniform(-0.1, 0.1)
+            point = wave + noise
+            points.append(point)
 
-            # Draw mirrored bars
-            self.canvas.create_rectangle(
-                x, center_y - bar_height / 2,
-                   x + bar_width, center_y + bar_height / 2,
-                fill=self.color,
-                width=0
-            )
+        return points
 
-    def update_position(self, current_time, total_time):
-        """Update waveform position based on current playback time"""
-        if total_time > 0:
-            progress = current_time / total_time
-            start_frame = int(progress * self.num_frames)
-            self.draw_waveform(start_frame)
-
+    def update_waveform(self):
+        """Update waveform visualization"""
+        try:
+            new_points = self.generate_wave_points()
+            self.draw_waveform(new_points)
+        except Exception as e:
+            print(f"Error updating waveform: {e}")
 
 class RealTimeWaveformUpdater:
     def __init__(self, visualizer, player):
         self.visualizer = visualizer
         self.player = player
-        self.is_running = False
+        self._is_running = False
+        self._after_id = None
 
     def start_update(self):
-        """Start real-time waveform updates"""
-        self.is_running = True
+        """Start the update loop"""
+        self._is_running = True
         self._update_loop()
 
     def stop_update(self):
-        """Stop real-time updates"""
-        self.is_running = False
+        """Stop the update loop"""
+        self._is_running = False
+        if self._after_id:
+            self.visualizer.canvas.after_cancel(self._after_id)
+            self._after_id = None
 
     def _update_loop(self):
-        """Update waveform visualization in real-time"""
-        if not self.is_running:
-            return
+        """Update loop for the waveform visualization"""
+        if self._is_running and self.player.is_playing and not self.player.is_seeking:
+            try:
+                self.visualizer.update_waveform()
+            except Exception as e:
+                print(f"Waveform update error: {e}")
 
-        if self.player.get_busy():
-            current_time = self.player.get_pos() / 1000  # Convert to seconds
-            total_time = self.visualizer.num_frames / self.visualizer.sample_rate
-            self.visualizer.update_position(current_time, total_time)
-
-        # Schedule next update
-        self.player.after(50, self._update_loop)  # Update every 50ms
+        # 다음 업데이트 예약 (더 부드러운 애니메이션을 위해 간격 조정)
+        if self._is_running:
+            self._after_id = self.visualizer.canvas.after(100, self._update_loop)
