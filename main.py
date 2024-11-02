@@ -98,7 +98,7 @@ class ModernPurplePlayer(ctk.CTk):
                     'artist': track[1],
                     'thumbnail': track[2],
                     'url': track[3],
-                    'path': file_path
+                    'path': file_path,
                 }
                 self.playlist.append(track_info)
 
@@ -229,7 +229,7 @@ class ModernPurplePlayer(ctk.CTk):
     def on_save_group(self, group_name, files):
         """Handle files added from FileAddModal."""
         # Store files and group name in the database
-        playlist_id = self.db_manager.add_playlist(group_name, None)  # Create playlist with group name
+        playlist_id = self.db_manager.add_playlist(group_name, 'local_file')  # Create playlist with group name
 
         for file_path in files:
             metadata = self.get_audio_metadata(file_path)
@@ -237,7 +237,7 @@ class ModernPurplePlayer(ctk.CTk):
             artist = metadata.get('artist')
             thumbnail = metadata.get('thumbnail', None)  # Adjust as per your thumbnail logic
 
-            self.db_manager.add_track(playlist_id, title, artist, thumbnail, None, file_path)  # URL is None
+            self.db_manager.add_track(playlist_id, title, artist, thumbnail, 'local_file', file_path, 'file')  # URL is None
 
             # Add the song to the playlist UI
             self.playlist.append({

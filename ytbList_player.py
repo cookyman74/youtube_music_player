@@ -1,12 +1,9 @@
 import configparser
-
 import requests
 import yt_dlp
 from yt_dlp import YoutubeDL
 import os
 import ffmpeg
-import configparser
-
 
 class YtbListPlayer:
     def __init__(self, db_manager):
@@ -49,7 +46,7 @@ class YtbListPlayer:
                 if not thumbnail and video_id:
                     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
                     thumbnail = self.download_thumbnail(thumbnail_url, video_id) if thumbnail_url else None
-                print("12313132123", thumbnail)
+
                 url = entry.get('url')
 
                 # 오디오 다운로드 및 변환 후 파일 경로 저장
@@ -57,7 +54,9 @@ class YtbListPlayer:
 
                 # file_path가 존재할 경우 데이터베이스에 트랙 저장
                 if file_path:
-                    self.db_manager.add_track(playlist_id, title, artist, thumbnail, url, file_path)
+                    self.db_manager.add_track(
+                        playlist_id, title, artist, thumbnail, url, file_path, "youtube"
+                    )
 
                 # 플레이리스트에 트랙 추가 (UI 업데이트를 위한 데이터)
                 self.play_list.append({

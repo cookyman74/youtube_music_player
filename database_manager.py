@@ -51,25 +51,31 @@ class DatabaseManager:
                 INSERT OR IGNORE INTO tracks (playlist_id, title, artist, thumbnail, url, file_path, source_type)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (playlist_id, title, artist, thumbnail, url, file_path, source_type))
+            print("데이터 저장: ", playlist_id, title, artist, thumbnail, url, file_path, source_type)
             conn.commit()
 
     def get_tracks_by_playlist(self, playlist_id, source_type=None):
         """특정 플레이리스트의 모든 곡을 가져오기. source_type에 따라 필터링 가능"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            if source_type:
-                cursor.execute('''
-                    SELECT title, artist, thumbnail, url, file_path FROM tracks
-                    WHERE playlist_id = ? AND source_type = ?
-                ''', (playlist_id, source_type))
-            else:
-                cursor.execute('''
-                    SELECT title, artist, thumbnail, url, file_path FROM tracks
-                    WHERE playlist_id = ?
-                ''', (playlist_id,))
-            tracks = cursor.fetchall()
-            print(f"플레이리스트 ID {playlist_id}의 트랙 가져오기:", tracks)  # 데이터 확인을 위한 출력
-            return tracks
+        print("플레이 리스트 아이디: ", playlist_id)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if source_type:
+                    cursor.execute('''
+                            SELECT title, artist, thumbnail, url, file_path, source_type FROM tracks
+                            WHERE playlist_id = ? AND source_type = ?
+                        ''', (playlist_id, source_type))
+                else:
+                    cursor.execute('''
+                            SELECT title, artist, thumbnail, url, file_path, source_type FROM tracks
+                            WHERE playlist_id = ?
+                        ''', (playlist_id,))
+                tracks = cursor.fetchall()
+                print(f"플레이리스트 ID {playlist_id}의 트랙 가져오기:", tracks)  # 데이터 확인을 위한 출력
+                return tracks
+        except sqlite3.Error as e:
+            print(f"데이터베이스 오류 발생: {e}")
+            return []
 
     def get_all_playlists(self):
         """모든 플레이리스트를 가져오기"""
