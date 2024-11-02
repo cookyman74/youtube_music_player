@@ -26,6 +26,7 @@ class DatabaseManager:
                     thumbnail TEXT,
                     url TEXT,
                     file_path TEXT UNIQUE,
+                    source_type TEXT CHECK(source_type IN ('file', 'youtube')),
                     FOREIGN KEY (playlist_id) REFERENCES playlists(id)
                 )
             ''')
@@ -42,24 +43,30 @@ class DatabaseManager:
             conn.commit()
             return cursor.lastrowid
 
-    def add_track(self, playlist_id, title, artist, thumbnail, url, file_path):
+    def add_track(self, playlist_id, title, artist, thumbnail, url, file_path, source_type):
         """곡 정보를 데이터베이스에 추가"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR IGNORE INTO tracks (playlist_id, title, artist, thumbnail, url, file_path)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (playlist_id, title, artist, thumbnail, url, file_path))
+                INSERT OR IGNORE INTO tracks (playlist_id, title, artist, thumbnail, url, file_path, source_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (playlist_id, title, artist, thumbnail, url, file_path, source_type))
             conn.commit()
 
-    def get_tracks_by_playlist(self, playlist_id):
-        """특정 플레이리스트의 모든 곡을 가져오기"""
+    def get_tracks_by_playlist(self, playlist_id, source_type=None):
+        """특정 플레이리스트의 모든 곡을 가져오기. source_type에 따라 필터링 가능"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT title, artist, thumbnail, url, file_path FROM tracks
-                WHERE playlist_id = ?
-            ''', (playlist_id,))
+            if source_type:
+                cursor.execute('''
+                    SELECT title, artist, thumbnail, url, file_path FROM tracks
+                    WHERE playlist_id = ? AND source_type = ?
+                ''', (playlist_id, source_type))
+            else:
+                cursor.execute('''
+                    SELECT title, artist, thumbnail, url, file_path FROM tracks
+                    WHERE playlist_id = ?
+                ''', (playlist_id,))
             tracks = cursor.fetchall()
             print(f"플레이리스트 ID {playlist_id}의 트랙 가져오기:", tracks)  # 데이터 확인을 위한 출력
             return tracks

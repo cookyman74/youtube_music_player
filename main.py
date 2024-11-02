@@ -8,9 +8,12 @@ import os
 import pygame
 from mutagen import File
 from mutagen.easyid3 import EasyID3
+from pytube.extract import playlist_id
+
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
 from database_manager import DatabaseManager
 from ytbList_player import YtbListPlayer
+from file_addmodal import FileAddModal
 import asyncio
 import threading
 import queue
@@ -219,10 +222,63 @@ class ModernPurplePlayer(ctk.CTk):
         )
         artist_label.pack(fill="x")
 
+    def open_file_add_modal(self):
+        """Open File Add Modal to add local music files to playlist."""
+        FileAddModal(self, self.on_save_group)
+
+    def on_save_group(self, group_name, files):
+        """Handle files added from FileAddModal."""
+        # Store files and group name in the database
+        playlist_id = self.db_manager.add_playlist(group_name, None)  # Create playlist with group name
+
+        for file_path in files:
+            metadata = self.get_audio_metadata(file_path)
+            title = metadata.get('title')
+            artist = metadata.get('artist')
+            thumbnail = metadata.get('thumbnail', None)  # Adjust as per your thumbnail logic
+
+            self.db_manager.add_track(playlist_id, title, artist, thumbnail, None, file_path)  # URL is None
+
+            # Add the song to the playlist UI
+            self.playlist.append({
+                'title': title,
+                'artist': artist,
+                'thumbnail': thumbnail,
+                'url': 'file',
+                'path': file_path
+            })
+
+        self.update_playlist_ui()  # Refresh UI
+
     def add_files(self):
         """로컬 음악 파일 추가"""
-        files = filedialog.askopenfilenames(filetypes=[("Audio Files", "*.mp3 *.wav *.ogg"), ("All Files", "*.*")])
-        self.add_to_playlist(files)
+        self.open_file_add_modal()
+
+    def get_or_create_local_playlist_id(self):
+        """로컬 파일용 기본 플레이리스트 ID를 가져오거나 생성"""
+        # "Local Files"라는 이름으로 로컬 파일 전용 플레이리스트를 생성하거나, 이미 존재하면 해당 ID를 가져옴
+        local_playlist = self.db_manager.get_playlist_by_title("Local Files")
+        if local_playlist:
+            return local_playlist[0]  # 이미 존재하는 경우 ID 반환
+        else:
+            return self.db_manager.add_playlist("Local Files", None)  # 존재하지 않으면 새로 추가
+
+    def get_audio_metadata(self, file_path):
+        """오디오 파일에서 메타데이터 추출"""
+        try:
+            audio = EasyID3(file_path)
+            return {
+                'title': audio.get('title', ['Unknown Title'])[0],
+                'artist': audio.get('artist', ['Unknown Artist'])[0],
+                'album': audio.get('album', ['Unknown Album'])[0]
+            }
+        except:
+            # EasyID3에서 실패 시 파일명을 기본 타이틀로 사용
+            return {
+                'title': os.path.splitext(os.path.basename(file_path))[0],
+                'artist': 'Unknown Artist',
+                'album': 'Unknown Album'
+            }
 
     def add_to_playlist(self, files):
         """플레이리스트에 파일 추가"""
