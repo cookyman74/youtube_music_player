@@ -38,7 +38,7 @@ class YtbListPlayer:
             # 각 트랙을 데이터베이스에 추가
             for entry in playlist_info['entries']:
                 title = entry.get('title', 'Unknown Title')
-                artist = 'YouTube'  # YouTube에서 제공되지 않을 수 있음
+                artist = entry.get('artist', 'YouTube')  # YouTube에서 제공되지 않을 수 있음
                 thumbnail = entry.get('thumbnail')
                 video_id = entry.get('id')
 

@@ -135,16 +135,16 @@ class ModernPurplePlayer(ctk.CTk):
 
             if audio_path:
                 # 비동기적으로 UI에 추가하기 위해 메인 스레드에서 실행
-                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title']))
+                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title'], video['artist']))
 
         # 다운로드 완료 후 UI 갱신
         self.playlist_container.after(0, self.update_playlist_ui)
 
-    def add_song_to_playlist(self, audio_path, title):
+    def add_song_to_playlist(self, audio_path, title, artist):
         """UI에 곡을 추가하는 메소드"""
         self.playlist.append({
             'path': audio_path,
-            'metadata': {'title': title, 'artist': 'YouTube'}
+            'metadata': {'title': title, 'artist': artist}
         })
         self.update_playlist_ui()
 
@@ -269,7 +269,8 @@ class ModernPurplePlayer(ctk.CTk):
     def get_audio_metadata(self, file_path):
         """오디오 파일에서 메타데이터 추출"""
         try:
-            audio = EasyID3(file_path)
+            # 파일 형식을 자동으로 감지하여 메타데이터를 읽기
+            audio = File(file_path, easy=True)
             return {
                 'title': audio.get('title', ['Unknown Title'])[0],
                 'artist': audio.get('artist', ['Unknown Artist'])[0],
@@ -645,41 +646,45 @@ class ModernPurplePlayer(ctk.CTk):
         self.progress_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
         self.progress_frame.pack(fill="x", padx=20, pady=10)
 
-        self.time_current = ctk.CTkLabel(self.progress_frame, text="00:00")
-        self.time_current.pack(side="left")
-        self.time_total = ctk.CTkLabel(self.progress_frame, text="00:00")
-        self.time_total.pack(side="right")
-
         # Progress bar 생성 및 이벤트 바인딩
         self.progress_bar = ctk.CTkProgressBar(self.progress_frame)
         self.progress_bar.pack(fill="x", pady=5)
         self.progress_bar.set(0)
+
+        # Left-aligned current time label
+        self.time_current = ctk.CTkLabel(self.progress_frame, text="00:00")
+        self.time_current.place(relx=0.0, rely=1.0, anchor="sw", x=10, y=5)  # progress bar의 왼쪽 끝에 위치
+
+        # Right-aligned total time label
+        self.time_total = ctk.CTkLabel(self.progress_frame, text="00:00")
+        self.time_total.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=5)  # progress bar의 오른쪽 끝에 위치
 
         # Progress bar 이벤트 바인딩
         self.progress_bar.bind("<ButtonPress-1>", self.on_progress_click)
         self.progress_bar.bind("<B1-Motion>", self.on_progress_drag)
         self.progress_bar.bind("<ButtonRelease-1>", self.on_progress_release)
 
-        # Volume control
-        self.volume_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
-        self.volume_frame.pack(fill="x", padx=20)
-
-        self.volume_slider = ctk.CTkSlider(
-            self.volume_frame,
-            from_=0,
-            to=100,
-            number_of_steps=100,
-            command=self.set_volume
-        )
-        self.volume_slider.pack(side="right", fill="x", expand=True, padx=10)
-        self.volume_slider.set(50)
-
-        volume_icon = ctk.CTkLabel(self.volume_frame, text="🔊")
-        volume_icon.pack(side="left")
+        ## Volume control
+        # self.volume_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
+        # self.volume_frame.pack(fill="x", padx=20)
+        #
+        # self.volume_slider = ctk.CTkSlider(
+        #     self.volume_frame,
+        #     from_=0,
+        #     to=100,
+        #     number_of_steps=100,
+        #     command=self.set_volume
+        # )
+        # self.volume_slider.pack(side="right", fill="x", expand=True, padx=10)
+        # self.volume_slider.set(100)
+        #
+        # volume_icon = ctk.CTkLabel(self.volume_frame, text="🔊")
+        # volume_icon.pack(side="left")
+        # volume_icon.pack(side="left")
 
         # Control buttons
         self.controls_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
-        self.controls_frame.pack(pady=20)
+        self.controls_frame.pack(pady=15)
 
         controls = {
             "prev": ("⏮", self.play_previous),
@@ -691,13 +696,14 @@ class ModernPurplePlayer(ctk.CTk):
             btn = ctk.CTkButton(
                 self.controls_frame,
                 text=icon,
-                width=40,
-                height=40,
+                width=60,
+                height=60,
                 fg_color=self.purple_mid if control == "play" else "transparent",
                 hover_color=self.purple_light,
+                font=("Helvetica", 20),
                 command=command
             )
-            btn.pack(side="left", padx=10)
+            btn.pack(side="left", padx=5)
             if control == "play":
                 self.play_button = btn
 
@@ -793,32 +799,6 @@ class ModernPurplePlayer(ctk.CTk):
                 print(f"Update player error: {e}")
 
         self.after(50, self.update_player)
-
-    # def update_player(self):
-    #     """Update player UI elements"""
-    #     if self.is_playing and not self.is_seeking:
-    #         try:
-    #             current_pos = pygame.mixer.music.get_pos() / 1000  # Convert to seconds
-    #             total_length = self.get_audio_length()
-    #
-    #             if current_pos > 0 and total_length > 0:
-    #                 # 현재 위치가 전체 길이를 넘지 않도록 보정
-    #                 current_pos = min(current_pos, total_length)
-    #                 progress = current_pos / total_length
-    #
-    #                 if not self.is_seeking:  # seeking 중이 아닐 때만 UI 업데이트
-    #                     self.progress_bar.set(progress)
-    #                     self.time_current.configure(text=self.format_time(current_pos))
-    #                     self.time_total.configure(text=self.format_time(total_length))
-    #
-    #             # 재생이 끝났는지 확인
-    #             if not pygame.mixer.music.get_busy() and not self.is_seeking:
-    #                 self.play_next()
-    #
-    #         except Exception as e:
-    #             print(f"Player update error: {e}")
-    #
-    #     self.after(100, self.update_player)
 
     def pause_waveform_update(self):
         """파형 시각화 업데이트 일시 중지"""
@@ -1032,14 +1012,16 @@ class ModernPurplePlayer(ctk.CTk):
 
     def create_bottom_nav(self):
         """Create bottom navigation bar"""
-        nav_frame = ctk.CTkFrame(self, fg_color=self.purple_mid, height=50)
+        nav_frame = ctk.CTkFrame(self, fg_color=self.purple_mid, height=60)  # 상단바 높이와 비슷하게 설정
         nav_frame.pack(side="bottom", fill="x")
 
         for icon in ["🏠", "📃", "🔍"]:
             btn = ctk.CTkButton(
                 nav_frame,
                 text=icon,
-                width=30,
+                width=60,  # 버튼의 가로 크기를 더 크게 설정
+                height=60,  # 버튼의 세로 크기를 더 크게 설정
+                font=("Helvetica", 24),  # 아이콘 크기 조정을 위해 폰트 크기 설정
                 fg_color="transparent",
                 hover_color=self.purple_light,
                 command=lambda i=icon: self.navigate(i)
@@ -1305,6 +1287,7 @@ class ModernPurplePlayer(ctk.CTk):
                     print(f"Error: Invalid file path - {file_path}")
                     return
 
+                # 오디오 재생
                 pygame.mixer.music.load(file_path)
                 pygame.mixer.music.play()
                 self.is_playing = True
@@ -1317,7 +1300,8 @@ class ModernPurplePlayer(ctk.CTk):
                 self.update_song_info(current_track)
 
                 # 파형 시각화 시작
-                self.resume_visualization()
+                if hasattr(self, 'waveform_updater'):
+                    self.waveform_updater.start_update()
 
                 # 진행 시간 초기화
                 total_length = self.get_audio_length()
@@ -1341,15 +1325,23 @@ class ModernPurplePlayer(ctk.CTk):
             self.is_playing = not self.is_playing
 
     def play_next(self):
-        """Play next track in playlist"""
+        """다음 트랙 재생"""
         if self.playlist:
+            # 현재 재생 중인 시각화 중지
+            self.pause_visualization()
+            # 다음 곡 인덱스로 변경
             self.current_index = (self.current_index + 1) % len(self.playlist)
+            # 새로운 곡 재생
             self.play_current()
 
     def play_previous(self):
-        """Play previous track in playlist"""
+        """이전 트랙 재생"""
         if self.playlist:
+            # 현재 재생 중인 시각화 중지
+            self.pause_visualization()
+            # 이전 곡 인덱스로 변경
             self.current_index = (self.current_index - 1) % len(self.playlist)
+            # 새로운 곡 재생
             self.play_current()
 
     def set_volume(self, value):
