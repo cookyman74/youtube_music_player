@@ -1,64 +1,78 @@
-# youtube_music_player
+# PyTube Player - YouTube MP3 Downloader Player
 
-`youtube_music_player`는 YouTube 및 로컬 음악 파일을 재생할 수 있는 간단한 음악 플레이어입니다. 이 앱을 통해 사용자는 YouTube 플레이리스트와 로컬 디렉토리의 음악을 추가하고, 직관적인 GUI를 통해 쉽게 음악을 재생하고 관리할 수 있습니다.
+**PyTube Player**는 YouTube 플레이리스트를 다운로드하고 MP3 형식으로 재생할 수 있는 간단한 음악 플레이어입니다. 이 프로그램은 Tkinter와 Pygame을 기반으로 한 GUI를 통해 사용하기 쉽고 직관적인 경험을 제공합니다. 또한 로컬 오디오 파일도 추가하여 재생할 수 있습니다.
+
 
 ---
 
 ## 주요 기능
-
-- **유튜브 플레이리스트 추가**: 유튜브의 플레이리스트 URL을 입력하여 음악을 스트리밍할 수 있습니다.
-- **로컬 파일 추가**: MP3, WAV, OGG 등 다양한 로컬 음악 파일을 추가하여 재생할 수 있습니다.
-- **앨범 이미지 표시**: 현재 재생 중인 곡의 앨범 아트를 표시하여 시각적인 즐거움도 제공합니다.
-- **재생 시간 표시**: 전체 음악 재생 시간과 현재 재생 위치를 실시간으로 확인할 수 있습니다.
-- **볼륨 조절**: 간편한 볼륨 슬라이더로 볼륨을 조절할 수 있습니다.
-- **기본 재생 제어**: 이전 곡, 재생/일시 정지, 정지, 다음 곡 버튼을 통해 음악을 쉽게 제어할 수 있습니다.
+- **YouTube 플레이리스트 다운로드 및 재생**: YouTube URL을 입력하여 플레이리스트를 다운로드하고 MP3 파일로 변환하여 재생할 수 있습니다.
+- **로컬 파일 추가**: 로컬에 저장된 오디오 파일을 추가하여 재생할 수 있습니다.
+- **재생 목록 관리**: 플레이리스트를 생성하고 파일을 관리할 수 있습니다.
+- **앨범 아트 및 오디오 웨이브폼 시각화**: 현재 재생 중인 곡의 썸네일을 표시하며, 오디오 웨이브폼을 시각화합니다.
+- **프로그레스 바 및 볼륨 조절**: 재생 중인 트랙의 진행 상황과 볼륨을 조절할 수 있습니다.
 
 ---
 
-## 설치 방법
+## 설치 및 실행 방법
 
-1. **파이썬 설치**: Python 3.8 이상이 설치되어 있어야 합니다. [Python 다운로드](https://www.python.org/downloads/)
+### 필수 라이브러리
 
-2. **필수 패키지 설치**: 다음 명령어를 실행하여 프로젝트에 필요한 패키지를 설치하세요.
-   ```bash
-   pip install -r requirements.txt
-   ```
-   
-3. FFmpeg 설치: FFmpeg는 음악 파일을 처리하는 데 필요합니다. OS에 맞게 설치하세요.
-   - Windows: FFmpeg 설치 가이드
-   - macOS (Homebrew 사용):
+프로젝트를 로컬에서 실행하기 위해서는 다음과 같은 Python 라이브러리가 필요합니다.
 
-       ```bash
-         brew install ffmpeg
-       ```
-
-   - Linux (APT 사용):
-
-        ```bash
-          sudo apt update
-          sudo apt install ffmpeg
-        ```
-
-## 실행 방법
-1. 애플리케이션 실행
-2. YouTube 플레이리스트 추가
-3. 로컬 파일 추가
-4. 재생 제어
-
-## 파일구조
-
-```plaintext
-youtube_music_player/
-├── main.py                # 메인 GUI 실행 파일
-├── youtubePlayer.py       # YouTube 플레이어 로직
-├── images/                # UI에 사용할 이미지 파일 폴더
-│   ├── play.png
-│   ├── pause.png
-│   └── ...
-├── downloaded_audios/     # 다운로드된 오디오 파일 저장 폴더
-├── requirements.txt       # 필요한 패키지 리스트
-└── config.ini             # YouTube API 키 설정 파일
+```bash
+pip install tkinter pygame mutagen pytube customtkinter pillow
 ```
+
+### 프로젝트 실행
+
+프로젝트는 `main.py` 파일을 통해 실행할 수 있습니다.
+
+```bash
+python main.py
+```
+
+## EXE 파일로 실행하기 (Windows 사용자)
+
+향후 `pyinstaller`를 이용해 `.exe` 파일로 변환하여 제공할 예정입니다. `.exe` 파일을 다운로드하면 Python 환경 없이도 쉽게 프로그램을 실행할 수 있습니다.
+
+### EXE 파일 다운로드 및 실행
+
+1. GitHub 릴리스 페이지에서 최신 버전의 `.exe` 파일을 다운로드합니다.
+2. 다운로드한 `.exe` 파일을 더블 클릭하여 프로그램을 실행합니다.
+3. 프로그램이 자동으로 실행되며, GUI를 통해 음악 파일을 추가하고 재생할 수 있습니다.
+
+### 직접 EXE 파일 생성하기 (개발자용)
+
+Windows에서 직접 `.exe` 파일을 생성하려면, 아래 명령어를 실행하세요. 이 명령어는 PyInstaller를 사용하여 Python 스크립트를 단일 `.exe` 파일로 변환합니다.
+
+```bash
+pyinstaller -w -F main.py
+```
+
+- `-w`: 콘솔 창을 숨깁니다.
+- `-F`: 단일 실행 파일로 생성합니다.
+
+생성된 `.exe` 파일은 `dist/` 폴더 내에 저장됩니다. 이 파일을 다른 Windows 사용자와 공유할 수 있습니다.
+
+## 파일 구조
+```plaintext
+PyTube Player/
+├── main.py                    # 메인 프로그램 파일
+├── database_manager.py         # 데이터베이스 관리 기능
+├── ytbList_player.py           # YouTube 플레이리스트 관리 기능
+├── file_addmodal.py            # 로컬 파일 추가 모달 창
+├── audio_waveform_visualizer.py # 오디오 웨이브폼 시각화 모듈
+├── assets/
+│   └── images/                 # 썸네일 및 기본 이미지 파일
+└── README.md                   # 프로젝트 설명 파일
+```
+## 향후 업데이트
+
+- Windows용 `.exe` 파일 배포
+- 다양한 오디오 포맷 지원
+- GUI 개선 및 사용자 경험 향상
+- 리팩토링: 모듈화
 
 
 ## 기여
@@ -69,3 +83,7 @@ youtube_music_player/
 #한잔의행복"
 
 <a href="https://www.buymeacoffee.com/cookymanm" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+
+## 라이선스
+
+MIT License를 따릅니다.

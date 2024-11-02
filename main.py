@@ -41,6 +41,8 @@ class ModernPurplePlayer(ctk.CTk):
         self.geometry("400x600")
         self.configure(fg_color=self.purple_dark)
         self.playlist = []
+        self.filtered_playlist = []  # 필터링된 플레이리스트를 저장할 리스트 추가
+        self.is_seeking = False  # 드래그 상태를 나타내는 속성
 
         # DatabaseManager 초기화
         self.db_manager = DatabaseManager()
@@ -81,6 +83,7 @@ class ModernPurplePlayer(ctk.CTk):
         if not pygame.mixer.get_init():
             pygame.mixer.init()
             pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.set_endevent(pygame.USEREVENT)  # Track end event 설정
 
     def load_playlists_from_db(self):
         """데이터베이스에서 모든 플레이리스트와 트랙을 로드"""
@@ -292,41 +295,6 @@ class ModernPurplePlayer(ctk.CTk):
             self.current_index = 0
             self.play_current()
 
-    # def update_playlist_ui(self):
-    #     """플레이리스트 UI 업데이트"""
-    #     # 기존 플레이리스트 UI 요소 초기화 및 기존 내용 제거
-    #     for widget in self.playlist_container.winfo_children():
-    #         widget.destroy()
-    #
-    #     # 데이터베이스에서 모든 플레이리스트 트랙 정보 가져오기
-    #     self.playlist.clear()
-    #     playlists = self.db_manager.get_all_playlists()  # 모든 플레이리스트 가져오기
-    #
-    #     print(playlists)
-    #     for playlist_id, title, url in playlists:
-    #         tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
-    #         for track in tracks:
-    #             track_info = {
-    #                 'title': track[0],
-    #                 'artist': track[1],
-    #                 'thumbnail': track[2],
-    #                 'url': track[3],
-    #                 'path': track[4]
-    #             }
-    #             self.playlist.append(track_info)
-    #
-    #     # self.playlist를 기반으로 UI 구성
-    #     for track in self.playlist:
-    #         song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
-    #         song_frame.pack(fill="x", pady=5)
-    #
-    #         title_label = ctk.CTkLabel(song_frame, text=track['title'], font=("Helvetica", 14, "bold"))
-    #         title_label.pack(side="left", padx=5)
-    #
-    #         artist_label = ctk.CTkLabel(song_frame, text=track['artist'], font=("Helvetica", 12), text_color="gray")
-    #         artist_label.pack(side="left", padx=5)
-    #
-    #     self.playlist_container.update_idletasks()
 
     async def async_download(self, song, song_frame, loading_label):
         """비동기 다운로드 처리"""
@@ -515,40 +483,6 @@ class ModernPurplePlayer(ctk.CTk):
     def load_and_show_playlist(self, playlist_id):
         """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
         # playlist UI를 업데이트하고 탭 이동
-        self.update_playlist_ui(album_id=playlist_id)
-        self.select_tab("Playlist")  # Playlist 탭으로 이동
-
-    def update_album_ui(self):
-        """앨범(플레이리스트) UI 업데이트"""
-        if not hasattr(self, 'album_grid_frame'):
-            self.create_album_view()  # album_grid_frame이 없는 경우 초기화
-
-        # UI 요소 초기화 및 기존 내용 제거
-        for widget in self.album_grid_frame.winfo_children():
-            widget.destroy()
-
-        # 모든 플레이리스트를 데이터베이스에서 가져와 표시
-        playlists = self.db_manager.get_all_playlists()
-        for playlist_id, title, url in playlists:
-            playlist_frame = ctk.CTkFrame(self.album_grid_frame, fg_color="#2D2640", corner_radius=10)
-            playlist_frame.pack(fill="x", pady=5, padx=10)
-
-            title_label = ctk.CTkLabel(playlist_frame, text=title, font=("Helvetica", 14, "bold"), anchor="w")
-            title_label.pack(fill="x", padx=5, pady=(5, 0))
-
-            url_label = ctk.CTkLabel(playlist_frame, text=url, font=("Helvetica", 12), text_color="gray", anchor="w")
-            url_label.pack(fill="x", padx=5, pady=(0, 5))
-
-            # 클릭 이벤트를 프레임과 라벨 모두에 바인딩
-            playlist_frame.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
-            title_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
-            url_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
-
-        self.album_grid_frame.update_idletasks()
-
-    def load_and_show_playlist(self, playlist_id):
-        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
-        # playlist UI를 업데이트하고 탭 이동
         try:
             # playlist_frame이 없으면 생성
             if not hasattr(self, 'playlist_frame'):
@@ -581,6 +515,34 @@ class ModernPurplePlayer(ctk.CTk):
 
         except Exception as e:
             print(f"플레이리스트 로드 중 오류 발생: {e}")
+
+    def update_album_ui(self):
+        """앨범(플레이리스트) UI 업데이트"""
+        if not hasattr(self, 'album_grid_frame'):
+            self.create_album_view()  # album_grid_frame이 없는 경우 초기화
+
+        # UI 요소 초기화 및 기존 내용 제거
+        for widget in self.album_grid_frame.winfo_children():
+            widget.destroy()
+
+        # 모든 플레이리스트를 데이터베이스에서 가져와 표시
+        playlists = self.db_manager.get_all_playlists()
+        for playlist_id, title, url in playlists:
+            playlist_frame = ctk.CTkFrame(self.album_grid_frame, fg_color="#2D2640", corner_radius=10)
+            playlist_frame.pack(fill="x", pady=5, padx=10)
+
+            title_label = ctk.CTkLabel(playlist_frame, text=title, font=("Helvetica", 14, "bold"), anchor="w")
+            title_label.pack(fill="x", padx=5, pady=(5, 0))
+
+            url_label = ctk.CTkLabel(playlist_frame, text=url, font=("Helvetica", 12), text_color="gray", anchor="w")
+            url_label.pack(fill="x", padx=5, pady=(0, 5))
+
+            # 클릭 이벤트를 프레임과 라벨 모두에 바인딩
+            playlist_frame.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
+            title_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
+            url_label.bind("<Button-1>", lambda e, pid=playlist_id: self.load_and_show_playlist(pid))
+
+        self.album_grid_frame.update_idletasks()
 
     def create_tab_view(self):
         """Create top tab navigation with equal width buttons"""
@@ -688,9 +650,15 @@ class ModernPurplePlayer(ctk.CTk):
         self.time_total = ctk.CTkLabel(self.progress_frame, text="00:00")
         self.time_total.pack(side="right")
 
+        # Progress bar 생성 및 이벤트 바인딩
         self.progress_bar = ctk.CTkProgressBar(self.progress_frame)
         self.progress_bar.pack(fill="x", pady=5)
         self.progress_bar.set(0)
+
+        # Progress bar 이벤트 바인딩
+        self.progress_bar.bind("<ButtonPress-1>", self.on_progress_click)
+        self.progress_bar.bind("<B1-Motion>", self.on_progress_drag)
+        self.progress_bar.bind("<ButtonRelease-1>", self.on_progress_release)
 
         # Volume control
         self.volume_frame = ctk.CTkFrame(self.player_frame, fg_color="transparent")
@@ -732,6 +700,241 @@ class ModernPurplePlayer(ctk.CTk):
             btn.pack(side="left", padx=10)
             if control == "play":
                 self.play_button = btn
+
+    def on_progress_click(self, event):
+        """Progress bar 클릭 이벤트 처리"""
+        if self.current_index >= 0:
+            self.is_seeking = True
+            self.pause_visualization()
+            self.seek_to_position(event)
+
+    def pause_visualization(self):
+        """파형 시각화 일시 중지"""
+        if hasattr(self, 'waveform_updater') and self.waveform_updater:
+            try:
+                self.waveform_updater.stop_update()
+            except Exception as e:
+                print(f"Error pausing visualization: {e}")
+
+    def on_progress_drag(self, event):
+        """Progress bar 드래그 이벤트 처리"""
+        if self.current_index >= 0 and self.is_seeking:
+            self.seek_to_position(event)
+
+    def on_progress_release(self, event):
+        """Progress bar 릴리즈 이벤트 처리"""
+        if self.current_index >= 0:
+            self.seek_to_position(event)
+            self.is_seeking = False
+            self.resume_visualization()
+
+    def resume_visualization(self):
+        """파형 시각화 재개"""
+        if hasattr(self, 'waveform_updater') and self.waveform_updater and self.is_playing:
+            try:
+                self.waveform_updater.start_update()
+            except Exception as e:
+                print(f"Error resuming visualization: {e}")
+
+    def seek_to_position(self, event):
+        """지정된 위치로 재생 위치 변경"""
+        try:
+            # 진행바 너비 대비 클릭 위치 계산
+            width = self.progress_bar.winfo_width()
+            relative_x = max(0, min(event.x, width))
+            progress = relative_x / width
+
+            # 전체 길이 및 새로운 위치 계산
+            total_length = self.get_audio_length()
+            new_position = total_length * progress
+
+            # 현재 재생 상태 저장
+            was_playing = self.is_playing
+
+            # 재생 위치 변경
+            if was_playing:
+                pygame.mixer.music.stop()
+
+            pygame.mixer.music.load(self.playlist[self.current_index]['path'])
+            pygame.mixer.music.play(start=int(new_position))
+
+            if not was_playing:
+                pygame.mixer.music.pause()
+
+            # UI 업데이트
+            self.progress_bar.set(progress)
+            self.time_current.configure(text=self.format_time(new_position))
+            self.current_position = new_position
+
+        except Exception as e:
+            print(f"Seek error: {e}")
+
+    def update_player(self):
+        """플레이어 UI 업데이트"""
+        if self.is_playing and not self.is_seeking:
+            try:
+                if pygame.mixer.music.get_busy():
+                    current_pos = pygame.mixer.music.get_pos() / 1000
+                    total_length = self.get_audio_length()
+
+                    if current_pos > 0 and total_length > 0:
+                        # 현재 위치가 전체 길이를 넘지 않도록 보정
+                        current_pos = min(current_pos + self.current_position, total_length)
+                        progress = current_pos / total_length
+
+                        self.progress_bar.set(progress)
+                        self.time_current.configure(text=self.format_time(current_pos))
+                        self.time_total.configure(text=self.format_time(total_length))
+                else:
+                    # 현재 곡이 끝났으면 다음 곡 재생
+                    self.play_next()
+
+            except Exception as e:
+                print(f"Update player error: {e}")
+
+        self.after(50, self.update_player)
+
+    # def update_player(self):
+    #     """Update player UI elements"""
+    #     if self.is_playing and not self.is_seeking:
+    #         try:
+    #             current_pos = pygame.mixer.music.get_pos() / 1000  # Convert to seconds
+    #             total_length = self.get_audio_length()
+    #
+    #             if current_pos > 0 and total_length > 0:
+    #                 # 현재 위치가 전체 길이를 넘지 않도록 보정
+    #                 current_pos = min(current_pos, total_length)
+    #                 progress = current_pos / total_length
+    #
+    #                 if not self.is_seeking:  # seeking 중이 아닐 때만 UI 업데이트
+    #                     self.progress_bar.set(progress)
+    #                     self.time_current.configure(text=self.format_time(current_pos))
+    #                     self.time_total.configure(text=self.format_time(total_length))
+    #
+    #             # 재생이 끝났는지 확인
+    #             if not pygame.mixer.music.get_busy() and not self.is_seeking:
+    #                 self.play_next()
+    #
+    #         except Exception as e:
+    #             print(f"Player update error: {e}")
+    #
+    #     self.after(100, self.update_player)
+
+    def pause_waveform_update(self):
+        """파형 시각화 업데이트 일시 중지"""
+        if hasattr(self, 'waveform_updater'):
+            self.waveform_updater.stop_update()
+
+    def resume_waveform_update(self):
+        """파형 시각화 업데이트 재개"""
+        if hasattr(self, 'waveform_updater'):
+            self.waveform_updater.start_update()
+
+    def on_progress_bar_click(self, event):
+        """Handle progress bar click to seek within the audio track"""
+        if self.current_index >= 0:
+            try:
+                # 클릭한 위치의 비율 계산
+                progress_width = self.progress_bar.winfo_width()
+                click_position = max(0, min(1, event.x / progress_width))
+
+                # 현재 재생 중이던 상태 저장
+                was_playing = self.is_playing
+
+                # 현재 트랙 다시 로드
+                current_track = self.playlist[self.current_index]
+                total_length = self.get_audio_length()
+                new_position = click_position * total_length
+
+                # 음악 다시 로드 및 재생
+                pygame.mixer.music.load(current_track['path'])
+                pygame.mixer.music.play(start=int(new_position))
+
+                # 이전 상태가 일시정지였다면 다시 일시정지
+                if not was_playing:
+                    pygame.mixer.music.pause()
+                    self.is_playing = False
+                else:
+                    self.is_playing = True
+
+                # UI 업데이트
+                self.progress_bar.set(click_position)
+                self.time_current.configure(text=self.format_time(new_position))
+
+            except Exception as e:
+                print(f"Progress bar click error: {e}")
+
+    def on_progress_bar_drag(self, event):
+        """Handle progress bar drag to preview position"""
+        if self.current_index >= 0:
+            self.is_seeking = True
+            progress_width = self.progress_bar.winfo_width()
+            click_position = max(0, min(1, event.x / progress_width))
+
+            # 미리보기 시간 표시
+            preview_time = click_position * self.get_audio_length()
+            self.progress_bar.set(click_position)
+            self.time_current.configure(text=self.format_time(preview_time))
+
+    def on_progress_bar_release(self, event):
+        """Handle progress bar release to set new position"""
+        if self.current_index >= 0:
+            try:
+                # 최종 위치 계산
+                progress_width = self.progress_bar.winfo_width()
+                click_position = max(0, min(1, event.x / progress_width))
+
+                # 현재 재생 상태 저장
+                was_playing = self.is_playing
+
+                # 새로운 위치 계산
+                total_length = self.get_audio_length()
+                new_position = click_position * total_length
+
+                # 트랙 다시 로드 및 재생
+                current_track = self.playlist[self.current_index]
+                pygame.mixer.music.load(current_track['path'])
+                pygame.mixer.music.play(start=int(new_position))
+
+                # 이전 상태 복원
+                if not was_playing:
+                    pygame.mixer.music.pause()
+                    self.is_playing = False
+                else:
+                    self.is_playing = True
+
+                # UI 업데이트
+                self.progress_bar.set(click_position)
+                self.time_current.configure(text=self.format_time(new_position))
+
+            except Exception as e:
+                print(f"Progress bar release error: {e}")
+            finally:
+                self.is_seeking = False
+
+
+    def get_audio_length(self):
+        """오디오 파일의 총 길이 반환"""
+        if self.current_index >= 0 and self.current_index < len(self.playlist):
+            try:
+                audio = File(self.playlist[self.current_index]['path'])
+                if hasattr(audio.info, 'length'):
+                    return float(audio.info.length)
+            except Exception as e:
+                print(f"Error getting audio length: {e}")
+        return 0.0
+
+
+    # def on_progress_bar_drag_start(self, event):
+    #     """사용자가 프로그레스바 드래그를 시작할 때 호출"""
+    #     self.is_seeking = True
+    #
+    # def on_progress_bar_drag_end(self, event):
+    #     """사용자가 프로그레스바 드래그를 끝낼 때 호출"""
+    #     self.is_seeking = False
+    #     # 사용자가 설정한 위치로 재생 위치 이동
+    #     new_pos = self.progress_bar.get() * self.get_audio_length()
+    #     pygame.mixer.music.play(start=new_pos)
 
     def load_album_art(self, path):
         """Load album art image"""
@@ -995,37 +1198,6 @@ class ModernPurplePlayer(ctk.CTk):
         elif icon == "🔍":
             self.search_frame.pack(fill="both", expand=True)
 
-    def add_to_playlist(self, files):
-        """Add files to playlist and update UI"""
-        for file in files:
-            self.playlist.append({
-                'path': file,
-                'metadata': self.get_audio_metadata(file)
-            })
-        self.update_playlist_ui()
-
-        # If this is the first song added, start playing
-        if self.current_index == -1 and self.playlist:
-            self.current_index = 0
-            self.play_current()
-
-    def get_audio_metadata(self, file_path):
-        """Extract metadata from audio file"""
-        try:
-            audio = EasyID3(file_path)
-            return {
-                'title': audio.get('title', ['Unknown Title'])[0],
-                'artist': audio.get('artist', ['Unknown Artist'])[0],
-                'album': audio.get('album', ['Unknown Album'])[0]
-            }
-        except:
-            # If EasyID3 fails, use filename as title
-            return {
-                'title': os.path.splitext(os.path.basename(file_path))[0],
-                'artist': 'Unknown Artist',
-                'album': 'Unknown Album'
-            }
-
     def download_audio(self, song):
         """곡의 URL을 통해 오디오를 다운로드하고 파일 경로를 데이터베이스에 저장"""
         title = song['title']
@@ -1056,8 +1228,14 @@ class ModernPurplePlayer(ctk.CTk):
             frame.destroy()
         self.song_frames.clear()
 
+        # 검색어에 따라 self.playlist에서 필터링된 곡들만 self.filtered_playlist에 저장
+        self.filtered_playlist = [
+            song for song in self.playlist
+            if search_term in song.get('title', '').lower() or search_term in song.get('artist', '').lower()
+        ]
+
         # 검색어에 따라 self.playlist에서 필터링된 곡들만 표시
-        for i, song in enumerate(self.playlist):
+        for i, song in enumerate(self.filtered_playlist):
             title = song.get('title', '').lower()
             artist = song.get('artist', '').lower()
 
@@ -1117,45 +1295,49 @@ class ModernPurplePlayer(ctk.CTk):
         self.show_view("player")
 
     def play_current(self):
-        """Play the current track"""
+        """현재 트랙 재생"""
         if 0 <= self.current_index < len(self.playlist):
-            current_track = self.playlist[self.current_index]
-
-            # 파일 경로 확인
-            file_path = current_track.get('path')
-            if not file_path or not os.path.isfile(file_path):
-                print(f"Error: '{file_path}' 파일이 존재하지 않거나 유효하지 않습니다.")
-                return
-
             try:
-                pygame.mixer.music.load(current_track['path'])
+                current_track = self.playlist[self.current_index]
+                file_path = current_track.get('path')
+
+                if not file_path or not os.path.isfile(file_path):
+                    print(f"Error: Invalid file path - {file_path}")
+                    return
+
+                pygame.mixer.music.load(file_path)
                 pygame.mixer.music.play()
                 self.is_playing = True
                 self.play_button.configure(text="⏸")
+                self.current_position = 0.0
 
-                # 현재 트랙의 썸네일 정보로 앨범 아트 업데이트
+                # UI 업데이트
                 if 'thumbnail' in current_track:
                     self.load_album_art(current_track['thumbnail'])
-                else:
-                    self.load_album_art(None)  # 기본 이미지 표시
-
                 self.update_song_info(current_track)
 
-                # Start waveform visualization
-                if self.waveform_visualizer:
-                    self.waveform_updater.start_update()
+                # 파형 시각화 시작
+                self.resume_visualization()
+
+                # 진행 시간 초기화
+                total_length = self.get_audio_length()
+                self.time_total.configure(text=self.format_time(total_length))
+                self.progress_bar.set(0)
+
             except Exception as e:
                 print(f"Error playing file: {e}")
 
     def toggle_play(self):
-        """Toggle between play and pause"""
+        """재생/일시정지 토글"""
         if self.current_index >= 0:
             if self.is_playing:
                 pygame.mixer.music.pause()
                 self.play_button.configure(text="▶")
+                self.pause_visualization()
             else:
                 pygame.mixer.music.unpause()
                 self.play_button.configure(text="⏸")
+                self.resume_visualization()
             self.is_playing = not self.is_playing
 
     def play_next(self):
@@ -1174,19 +1356,29 @@ class ModernPurplePlayer(ctk.CTk):
         """Set playback volume"""
         pygame.mixer.music.set_volume(float(value) / 100)
 
-    def update_player(self):
-        """Update player UI elements"""
-        if self.is_playing:
-            try:
-                current_pos = pygame.mixer.music.get_pos() / 1000  # Convert to seconds
-                if current_pos > 0:
-                    self.progress_bar.set(current_pos / self.get_audio_length())
-                    self.time_current.configure(text=self.format_time(current_pos))
-            except:
-                pass
+    # def update_player(self):
+    #     """Update player UI elements"""
+    #     if self.is_playing and not self.is_seeking:  # 드래그 중이 아닐 때만 위치 업데이트
+    #         try:
+    #             current_pos = pygame.mixer.music.get_pos() / 1000  # Convert to seconds
+    #             if current_pos > 0:
+    #                 self.progress_bar.set(current_pos / self.get_audio_length())
+    #                 self.time_current.configure(text=self.format_time(current_pos))
+    #         except:
+    #             pass
+    #
+    #         # 재생 중인 곡이 끝났는지 확인하고 다음 곡으로 이동
+    #     if not pygame.mixer.music.get_busy():  # 현재 곡이 끝난 상태
+    #         self.play_next_in_filtered_playlist()
+    #
+    #         # Schedule next update
+    #     self.after(100, self.update_player)
 
-        # Schedule next update
-        self.after(100, self.update_player)
+    def play_next_in_filtered_playlist(self):
+        """Play the next song in the filtered playlist"""
+        if self.filtered_playlist:
+            self.current_index = (self.current_index + 1) % len(self.filtered_playlist)
+            self.play_current()
 
     def update_song_info(self, track):
         """현재 재생 중인 곡의 정보를 UI에 업데이트합니다."""
@@ -1198,15 +1390,15 @@ class ModernPurplePlayer(ctk.CTk):
         self.song_title_label.configure(text=title)
         self.artist_label.configure(text=artist)
 
-    def get_audio_length(self):
-        """Get length of current audio file"""
-        if self.current_index >= 0:
-            try:
-                audio = File(self.playlist[self.current_index]['path'])
-                return audio.info.length
-            except:
-                return 0
-        return 0
+    # def get_audio_length(self):
+    #     """Get length of current audio file"""
+    #     if self.current_index >= 0:
+    #         try:
+    #             audio = File(self.playlist[self.current_index]['path'])
+    #             return audio.info.length
+    #         except:
+    #             return 0
+    #     return 0
 
     def format_time(self, seconds):
         """Format time in seconds to MM:SS"""
