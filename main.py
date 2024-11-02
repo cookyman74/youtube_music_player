@@ -135,16 +135,16 @@ class ModernPurplePlayer(ctk.CTk):
 
             if audio_path:
                 # 비동기적으로 UI에 추가하기 위해 메인 스레드에서 실행
-                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title']))
+                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title'], video['artist']))
 
         # 다운로드 완료 후 UI 갱신
         self.playlist_container.after(0, self.update_playlist_ui)
 
-    def add_song_to_playlist(self, audio_path, title):
+    def add_song_to_playlist(self, audio_path, title, artist):
         """UI에 곡을 추가하는 메소드"""
         self.playlist.append({
             'path': audio_path,
-            'metadata': {'title': title, 'artist': 'YouTube'}
+            'metadata': {'title': title, 'artist': artist}
         })
         self.update_playlist_ui()
 
@@ -269,7 +269,8 @@ class ModernPurplePlayer(ctk.CTk):
     def get_audio_metadata(self, file_path):
         """오디오 파일에서 메타데이터 추출"""
         try:
-            audio = EasyID3(file_path)
+            # 파일 형식을 자동으로 감지하여 메타데이터를 읽기
+            audio = File(file_path, easy=True)
             return {
                 'title': audio.get('title', ['Unknown Title'])[0],
                 'artist': audio.get('artist', ['Unknown Artist'])[0],
