@@ -28,23 +28,23 @@ class YtbListPlayer:
                 })
 
     def download_and_convert_audio(self, url, title):
-        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 FFmpeg로 변환 후 경로 반환"""
+        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 MP3로 변환 후 경로 반환"""
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': f'downloaded_audios/{title}.webm',
-            'quiet': True
+            'outtmpl': f'downloaded_audios/{title}.mp3',  # 최종적으로 mp3 파일로 저장
+            'quiet': True,
+            'postprocessors': [{  # postprocessors를 사용해 MP3로 변환
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',  # 필요에 따라 품질을 조정 가능
+            }],
         }
-        # YouTube에서 오디오 다운로드
+
+        # YouTube에서 오디오 다운로드 및 MP3로 변환
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # FFmpeg로 MP3로 변환
-        input_path = f'downloaded_audios/{title}.webm'
         output_path = f'downloaded_audios/{title}.mp3'
-        ffmpeg.input(input_path).output(output_path).run(overwrite_output=True)
-
-        # 임시 파일 삭제
-        os.remove(input_path)
         return output_path
 
     def load_song(self, file_path):
