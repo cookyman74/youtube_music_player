@@ -16,7 +16,6 @@ def get_diff_content(file_path):
         origin.fetch()
 
         # 원격 브랜치와 로컬 HEAD 간의 diff를 가져옴
-        # 여기서 HEAD~1 대신, origin/main과 비교하여 현재 커밋의 변경사항을 가져옴
         diff_content = repo.git.diff('origin/main', 'HEAD', file_path)
 
         if diff_content:
@@ -90,7 +89,11 @@ def main():
         changed_files = get_changed_files()
 
         if not changed_files:
-            print("No code changes detected.")
+            output = {
+                "summary": "No code changes detected.",
+                "details": []
+            }
+            print(json.dumps(output, ensure_ascii=False, indent=2))
             return
 
         review_summary = "코드 리뷰가 완료되었습니다. 세부 사항은 아래를 참조하세요."
@@ -110,7 +113,12 @@ def main():
 
         print(json.dumps(output, ensure_ascii=False, indent=2))
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        # 오류 발생 시에도 JSON 형식으로 출력
+        error_output = {
+            "summary": "Error occurred during code review.",
+            "details": [{"error": str(e)}]
+        }
+        print(json.dumps(error_output, ensure_ascii=False, indent=2))
 
 if __name__ == "__main__":
     main()
