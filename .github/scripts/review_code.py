@@ -14,7 +14,6 @@ def get_diff_content(file_path):
         origin.fetch()
 
         # 원격 브랜치와 로컬 HEAD 간의 diff를 가져옴
-        # HEAD~1 대신 origin/main과 비교하여 현재 커밋의 변경사항을 가져옴
         diff_content = repo.git.diff('origin/main', 'HEAD', file_path)
 
         if diff_content:
@@ -22,8 +21,8 @@ def get_diff_content(file_path):
         else:
             return None
     except Exception as e:
-        # 오류 발생 시 오류 메시지를 반환하여 이후 처리에서 확인 가능
-        return f"Error getting diff for {file_path}: {e}"
+        # JSON 호환 가능한 에러 메시지 반환
+        return json.dumps({"error": f"Error getting diff for {file_path}: {str(e)}"})
 
 def review_code(file_path, diff_content):
     """OpenAI API로 변경된 부분에 대한 코드 리뷰 요청"""
@@ -54,8 +53,8 @@ def review_code(file_path, diff_content):
         )
         return response.choices[0].message['content'].strip()
     except Exception as e:
-        # 오류 발생 시 오류 메시지를 반환하여 이후 JSON 출력 시 문제를 방지
-        return f"Error during review of {file_path}: {str(e)}"
+        # JSON 호환 가능한 에러 메시지 반환
+        return json.dumps({"error": f"Error during review of {file_path}: {str(e)}"})
 
 def get_changed_files():
     """원격 저장소와 로컬 저장소의 공통 조상을 기준으로 변경된 파일 목록을 가져오는 함수"""
@@ -64,18 +63,16 @@ def get_changed_files():
         origin = repo.remotes.origin
         origin.fetch()
 
-        # 현재 브랜치의 마지막 공통 조상을 기준으로 diff 수행
         merge_base = repo.git.merge_base('origin/main', 'HEAD')
         diff_index = repo.git.diff(merge_base, 'HEAD', '--name-only')
 
         if not diff_index:
             return []
 
-        # 파일 목록을 줄바꿈 기준으로 분리하고 빈 문자열 제거
         changed_files = diff_index.splitlines()
         return changed_files
     except Exception as e:
-        print(f"Error occurred while fetching changed files: {e}")
+        print(json.dumps({"error": f"Error occurred while fetching changed files: {str(e)}"}))
         return []
 
 def main():
@@ -83,7 +80,6 @@ def main():
         changed_files = get_changed_files()
 
         if not changed_files:
-            # 변경 사항이 없을 경우 요약 및 빈 세부사항을 포함하는 JSON 반환
             output = {
                 "summary": "No code changes detected.",
                 "details": []
@@ -101,7 +97,7 @@ def main():
                     review = review_code(file, diff_content)
                     review_details.append({"file": file, "comment": review})
                 elif diff_content and diff_content.startswith("Error"):
-                    # diff_content가 오류 메시지인 경우에도 세부 사항에 포함
+                    # 오류 메시지도 JSON 형식으로 기록
                     review_details.append({"file": file, "comment": diff_content})
 
         output = {
@@ -111,7 +107,6 @@ def main():
 
         print(json.dumps(output, ensure_ascii=False, indent=2))
     except Exception as e:
-        # main 함수에서 발생한 모든 예외에 대해 유효한 JSON 형식으로 출력
         error_output = {
             "summary": "Error occurred during code review.",
             "details": [{"error": str(e)}]
