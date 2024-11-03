@@ -3,7 +3,8 @@ import requests
 import yt_dlp
 from yt_dlp import YoutubeDL
 import os
-import ffmpeg
+import re
+
 
 class YtbListPlayer:
     def __init__(self, db_manager):
@@ -50,7 +51,7 @@ class YtbListPlayer:
                 url = entry.get('url')
 
                 # 오디오 다운로드 및 변환 후 파일 경로 저장
-                file_path = self.download_and_convert_audio(url, title)
+                file_path = self.download_and_convert_audio(url, playlist_title, title)
 
                 # file_path가 존재할 경우 데이터베이스에 트랙 저장
                 if file_path:
@@ -67,12 +68,22 @@ class YtbListPlayer:
                     'path': file_path  # 저장된 파일 경로
                 })
 
+    def sanitize_title(self, title):
+        """특수 문자 처리: 경로 구분자(\, /)는 삭제하고, 따옴표(")는 (')로 대체"""
+        title = title.replace("\\", "").replace("/", "")  # \와 / 삭제
+        title = title.replace('"', "'")  # "를 '로 대체
+        title = re.sub(r'[<>:*?|]', "", title)  # 그 외 허용되지 않는 문자는 삭제
+        return title
+
     def download_thumbnail(self, url, video_id):
         """썸네일 URL에서 이미지를 다운로드하여 로컬에 저장하고 파일 경로 반환"""
+        # video_id에 sanitize_title 적용
+        sanitized_video_id = self.sanitize_title(video_id)
+        thumbnail_path = os.path.join(self.thumbnail_dir, f"{sanitized_video_id}.jpg")
+
         try:
             response = requests.get(url, stream=True)
             if response.status_code == 200:
-                thumbnail_path = os.path.join(self.thumbnail_dir, f"{video_id}.jpg")
                 with open(thumbnail_path, 'wb') as f:
                     for chunk in response.iter_content(1024):
                         f.write(chunk)
@@ -81,30 +92,40 @@ class YtbListPlayer:
                 print(f"썸네일 다운로드 실패: {url} - 상태 코드 {response.status_code}")
         except Exception as e:
             print(f"썸네일 다운로드 오류: {e}")
+
         return None
 
-    def download_and_convert_audio(self, url, title):
-        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 FFmpeg로 변환 후 경로 반환"""
-        # 다운로드 폴더가 없으면 생성
-        if not os.path.exists("downloaded_audios"):
-            os.makedirs("downloaded_audios")
+    def download_and_convert_audio(self, url, album_name, title):
+        """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 mp3로 변환 후 경로 반환"""
+        # 앨범 디렉토리 생성
+        sanitized_album_name = self.sanitize_title(album_name)
+        album_dir = os.path.join("downloaded_audios", sanitized_album_name)
 
+        if not os.path.exists(album_dir):
+            os.makedirs(album_dir)
+
+        # 파일명에서 특수 문자를 처리
+        sanitized_title = self.sanitize_title(title)
+
+        # yt_dlp 설정 - 다운로드 후 mp3로 변환
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': f'downloaded_audios/{title}.webm',
-            'quiet': True
+            'outtmpl': os.path.join(album_dir, f'{sanitized_title}.%(ext)s'),  # 파일 이름 및 확장자 설정
+            'quiet': True,
+            'postprocessors': [{  # 다운로드 후 mp3로 변환
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',  # 음질 설정 (선택 사항)
+            }],
         }
+
         try:
-            # 오디오 다운로드
+            # 오디오 다운로드 및 mp3로 변환
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-            # FFmpeg로 변환 후 원본 삭제
-            input_path = f'downloaded_audios/{title}.webm'
-            output_path = f'downloaded_audios/{title}.mp3'
-
-            ffmpeg.input(input_path).output(output_path).run(overwrite_output=True)
-            os.remove(input_path)
+            # 변환된 mp3 파일 경로 설정
+            output_path = os.path.join(album_dir, f'{sanitized_title}.mp3')
 
             # 변환된 파일이 존재하면 경로 반환, 그렇지 않으면 None 반환
             if os.path.exists(output_path):
