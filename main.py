@@ -10,8 +10,10 @@ from mutagen import File
 from mutagen.easyid3 import EasyID3
 from pytube.extract import playlist_id
 
+from album_viewer import AlbumViewer
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
 from database_manager import DatabaseManager
+from playlist_viewer import PlaylistViewer
 from ytbList_player import YtbListPlayer
 from file_addmodal import FileAddModal
 import asyncio
@@ -62,6 +64,13 @@ class ModernPurplePlayer(ctk.CTk):
         self.playlist = []
         self.current_index = -1
         # self.ytb_player = YtbListPlayer()
+
+        # 현재 선택된 플레이리스트 ID 초기화
+        self.current_playlist_id = None
+
+        # 뷰어 인스턴스 초기화
+        self.album_viewer = None
+        self.playlist_viewer = None
 
         # Create tabs
         self.create_tab_view()
@@ -129,27 +138,41 @@ class ModernPurplePlayer(ctk.CTk):
 
     def download_playlist(self, url):
         """YouTube 플레이리스트를 다운로드하고 UI를 업데이트하는 메소드 (별도 스레드에서 실행)"""
-        self.ytb_player.set_play_list(url)
-        successful_downloads = 0
-        total_videos = len(self.ytb_player.play_list)
+        try:
+            self.ytb_player.set_play_list(url)
+            successful_downloads = 0
+            total_videos = len(self.ytb_player.play_list)
+            downloaded_tracks = []
 
-        # 다운로드 작업 수행 및 UI 업데이트
-        for video in self.ytb_player.play_list:
-            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['album'], video['title'])
+            # 다운로드 작업 수행 및 UI 업데이트
+            for video in self.ytb_player.play_list:
+                audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['album'], video['title'])
 
-            # 유효한 파일만 playlist에 추가
-            if audio_path:
-                successful_downloads += 1
-                self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title'], video['artist']))
+                # 유효한 파일만 저장
+                if audio_path:
+                    successful_downloads += 1
+                    downloaded_tracks.append({
+                        'path': audio_path,
+                        'title': video['title'],
+                        'artist': video.get('artist', 'YouTube')
+                    })
 
-        # 다운로드 완료 후 UI 갱신
-        self.playlist_container.after(0, self.update_playlist_ui)
+            # UI 업데이트를 메인 스레드에서 실행
+            def update_ui():
+                # 현재 플레이리스트 뷰어가 있다면 새로고침
+                if hasattr(self, 'playlist_viewer') and self.playlist_viewer:
+                    self.playlist_viewer.refresh_view()
 
-        # 다운로드 완료 메시지 표시
-        self.after(0, lambda: messagebox.showinfo(
-            "플레이리스트 다운로드 완료",
-            f"플레이리스트 다운로드가 완료되었습니다.\n성공: {successful_downloads}/{total_videos}"
-        ))
+                # 다운로드 완료 메시지 표시
+                messagebox.showinfo(
+                    "플레이리스트 다운로드 완료",
+                    f"플레이리스트 다운로드가 완료되었습니다.\n성공: {successful_downloads}/{total_videos}"
+                )
+
+            # 메인 스레드에서 UI 업데이트 실행
+            self.after(0, update_ui)
+        except Exception as e:
+            self.after(0, lambda: messagebox.showerror("Error", f"다운로드 중 오류 발생: {e}"))
 
     # def download_youtube_playlist(self, url):
     #     """YouTube 플레이리스트 URL로부터 재생 목록을 다운로드하고 UI에 실시간 업데이트"""
@@ -178,11 +201,18 @@ class ModernPurplePlayer(ctk.CTk):
 
     def add_song_to_playlist(self, audio_path, title, artist):
         """UI에 곡을 추가하는 메소드"""
-        self.playlist.append({
-            'path': audio_path,
-            'metadata': {'title': title, 'artist': artist}
-        })
-        self.update_playlist_ui()
+        try:
+            self.playlist.append({
+                'path': audio_path,
+                'metadata': {'title': title, 'artist': artist}
+            })
+
+            # 플레이리스트 뷰어가 있다면 새로고침
+            if hasattr(self, 'playlist_viewer') and self.playlist_viewer:
+                self.playlist_viewer.refresh_view()
+
+        except Exception as e:
+            print(f"곡 추가 중 오류 발생: {e}")
 
     def partial_update_playlist_ui(self):
         """실시간으로 추가된 곡을 UI에 반영"""
@@ -499,40 +529,61 @@ class ModernPurplePlayer(ctk.CTk):
             return None  # 로딩 실패 시 None 반환
 
     def load_and_show_playlist(self, playlist_id):
-        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
-        # playlist UI를 업데이트하고 탭 이동
+        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동"""
         try:
-            # playlist_frame이 없으면 생성
-            if not hasattr(self, 'playlist_frame'):
-                self.create_playlist_view()
+            # 현재 playlist_id 설정
+            self.current_playlist_id = playlist_id
 
-            # 특정 playlist의 트랙만 가져오도록 수정
-            self.playlist.clear()  # 기존 플레이리스트 초기화
-            tracks = self.db_manager.get_tracks_by_playlist(playlist_id)
+            # 탭 선택 및 UI 업데이트
+            self.select_tab("Playlist")
 
-            for track in tracks:
-                file_path = track[4]
-                if file_path:
-                    file_path = os.path.abspath(file_path)
+            # PlaylistViewer가 없으면 생성
+            if not self.playlist_viewer:
+                self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
 
-                track_info = {
+            # 특정 플레이리스트의 트랙 표시
+            self.playlist_viewer.show_playlist_tracks(playlist_id)
+            self.playlist_viewer.pack(fill="both", expand=True)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"플레이리스트 로드 중 오류 발생: {e}")
+
+    def play_selected_track(self, track_info, all_tracks):
+        """플레이리스트 뷰어에서 선택한 트랙 재생"""
+
+        try:
+            # 전체 플레이리스트 초기화 및 설정
+            self.playlist.clear()
+
+            # 현재 플레이리스트의 모든 트랙을 추가
+            for track in all_tracks:
+                self.playlist.append({
                     'title': track[0],
                     'artist': track[1],
                     'thumbnail': track[2],
                     'url': track[3],
-                    'path': file_path
-                }
-                self.playlist.append(track_info)
+                    'path': track[4]
+                })
 
-            # UI 업데이트
-            self.update_playlist_ui()
+            # 선택한 트랙의 인덱스 찾기
+            self.current_index = next(
+                (i for i, track in enumerate(self.playlist)
+                 if track['path'] == track_info['path']), 0
+            )
 
-            # Playlist 탭으로 이동
-            self.select_tab("Playlist")
-            self.playlist_frame.pack(fill="both", expand=True)
-
+            # 트랙 재생
+            self.play_current()
+            self.show_view("player")
         except Exception as e:
-            print(f"플레이리스트 로드 중 오류 발생: {e}")
+            messagebox.showerror("Error", f"트랙 재생 준비 중 오류 발생: {e}")
+
+    def start_track_download(self, track):
+        """트랙 다운로드 시작"""
+        song = {
+            'title': track[0],
+            'url': track[3]
+        }
+        self.start_download(song, None)  # 두 번째 인자는 UI 업데이트용 frame
 
     def update_album_ui(self):
         """앨범(플레이리스트) UI 업데이트"""
@@ -594,25 +645,9 @@ class ModernPurplePlayer(ctk.CTk):
 
     def create_album_view(self):
         """Album 뷰를 생성하고 album_grid_frame 초기화"""
-        if not hasattr(self, 'album_grid_frame'):
-            self.album_grid_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
-
-            # Search bar (optional)
-            search_frame = ctk.CTkFrame(self.album_grid_frame, fg_color=self.purple_mid)
-            search_frame.pack(fill="x", padx=20, pady=10)
-
-            ctk.CTkEntry(
-                search_frame,
-                placeholder_text="Search Albums...",
-                fg_color=self.purple_dark,
-                border_color=self.purple_light
-            ).pack(fill="x", padx=10, pady=10)
-
-            album_container = ctk.CTkScrollableFrame(
-                self.album_grid_frame,
-                fg_color=self.purple_dark
-            )
-            album_container.pack(fill="both", expand=True, padx=20)
+        if not hasattr(self, 'album_viewer'):
+            self.album_viewer = AlbumViewer(self, self.db_manager, self)
+        return self.album_viewer
 
     def create_main_player(self):
         """Create main player view"""
@@ -972,37 +1007,9 @@ class ModernPurplePlayer(ctk.CTk):
 
     def create_playlist_view(self):
         """Create playlist view"""
-        self.playlist_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
-        self.playlist_frame.pack(fill="both", expand=True)
-
-        # Search bar
-        search_frame = ctk.CTkFrame(self.playlist_frame, fg_color=self.purple_mid)
-        search_frame.pack(fill="x", padx=20, pady=10)
-
-        search_container = ctk.CTkFrame(search_frame, fg_color="transparent")
-        search_container.pack(fill="x", padx=10, pady=10)
-
-        search_icon = ctk.CTkLabel(search_container, text="🔍", fg_color="transparent")
-        search_icon.pack(side="left", padx=(5, 0))
-
-        self.search_entry = ctk.CTkEntry(
-            search_container,
-            placeholder_text="Search songs...",
-            fg_color=self.purple_dark,
-            border_color=self.purple_light,
-        )
-        self.search_entry.pack(side="left", fill="x", expand=True, padx=(5, 0))
-        self.search_entry.bind('<KeyRelease>', self.filter_playlist)
-
-        # 스크롤 가능한 플레이리스트 컨테이너
-        self.playlist_container = ctk.CTkScrollableFrame(
-            self.playlist_frame,
-            fg_color=self.purple_dark,
-        )
-        self.playlist_container.pack(fill="both", expand=True, padx=20, pady=10)
-
-        self.song_frames = []
-        self.update_playlist_ui()  # 플레이리스트 UI 업데이트
+        if not hasattr(self, 'playlist_viewer'):
+            self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+        return self.playlist_viewer
 
     def create_search_view(self):
         """Create search view"""
@@ -1045,6 +1052,61 @@ class ModernPurplePlayer(ctk.CTk):
             )
             btn.pack(side="left", expand=True)
 
+    def hide_all_frames(self):
+        """Hide all visible frames"""
+        frames_to_hide = [
+            self.player_frame,
+            getattr(self, 'playlist_viewer', None),
+            getattr(self, 'album_viewer', None),
+            getattr(self, 'menu_frame', None)
+        ]
+
+        for frame in frames_to_hide:
+            if frame and frame.winfo_exists():
+                frame.pack_forget()
+
+    def refresh_album_view(self):
+        """앨범 뷰 새로고침"""
+        if hasattr(self, 'album_viewer') and self.album_viewer:
+            self.album_viewer.force_refresh()
+
+    def show_selected_view(self, view):
+        """Show the selected view"""
+        try:
+            if view == "Menu":
+                self.show_menu_view()
+            elif view == "Playlist":
+                if not self.playlist_viewer:
+                    self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+
+                if self.current_playlist_id:
+                    # 선택된 앨범의 플레이리스트 표시
+                    self.playlist_viewer.show_playlist_tracks(self.current_playlist_id)
+                else:
+                    # 선택된 앨범이 없으면 첫 번째 앨범 선택
+                    playlists = self.db_manager.get_all_playlists()
+                    if playlists:
+                        self.current_playlist_id = playlists[0][0]
+                        self.playlist_viewer.show_playlist_tracks(self.current_playlist_id)
+                    else:
+                        messagebox.showinfo("알림", "표시할 앨범이 없습니다.")
+
+                self.playlist_viewer.pack(fill="both", expand=True)
+
+            elif view == "Album":
+                if not self.album_viewer:
+                    self.album_viewer = AlbumViewer(self, self.db_manager, self)
+                self.album_viewer.pack(fill="both", expand=True)
+                self.album_viewer.refresh_view()
+            elif view == "player":
+                self.player_frame.pack(fill="both", expand=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"뷰 전환 중 오류 발생: {e}")
+
+    def set_current_playlist(self, playlist_id):
+        """현재 선택된 플레이리스트 ID 설정"""
+        self.current_playlist_id = playlist_id
+
     def select_tab(self, tab):
         """Handle tab selection"""
         # Update tab button appearances
@@ -1055,54 +1117,82 @@ class ModernPurplePlayer(ctk.CTk):
                 btn.configure(fg_color="transparent", text_color="gray")
 
         # Hide all frames first
-        frames_to_hide = [
-            self.player_frame,
-            self.playlist_frame,
-            self.search_frame,
-            getattr(self, 'menu_frame', None),
-            getattr(self, 'album_grid_frame', None)
-        ]
-
-        for frame in frames_to_hide:
-            if frame:
-                frame.pack_forget()
+        self.hide_all_frames()
 
         # Show selected view
-        if tab == "Menu":
-            self.show_menu_view()
-        elif tab == "Playlist":
-            self.create_playlist_view()
-            self.update_playlist_ui()
-            self.playlist_frame.pack(fill="both", expand=True)
-        elif tab == "Album":
-            self.create_album_view()
-            self.update_album_ui()
-            self.album_grid_frame.pack(fill="both", expand=True)
-
+        self.show_selected_view(tab)
 
     def show_menu_view(self):
         """Show menu options"""
-        for frame in [self.player_frame, self.playlist_frame, self.search_frame]:
-            frame.pack_forget()
-
         if not hasattr(self, 'menu_frame'):
-            self.menu_frame = ctk.CTkFrame(self, fg_color="#1E1B2E")
-            options = [
-                ("Add Music Files", "🎵"),
-                ("Add YouTube Playlist", "▶️"),
-                ("Set Playlist Directory", "📁"),
-                ("Settings", "⚙️"),
-                ("About", "ℹ️")
-            ]
-            for text, icon in options:
-                option_frame = ctk.CTkFrame(self.menu_frame, fg_color="#2D2640", corner_radius=10)
-                option_frame.pack(fill="x", padx=20, pady=5)
-                btn = ctk.CTkButton(option_frame, text=f"{icon} {text}", fg_color="transparent", hover_color="#6B5B95",
-                                    anchor="w", command=lambda t=text: self.handle_menu_option(t))
-                btn.pack(fill="x", padx=10, pady=10)
+            self.create_menu_frame()
         self.menu_frame.pack(fill="both", expand=True)
 
-        self.menu_frame.pack(fill="both", expand=True)
+    def create_menu_frame(self):
+        """Create menu frame with options"""
+        self.menu_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
+
+        # 메뉴 옵션 정의
+        menu_options = [
+            {
+                "text": "Add Music Files",
+                "icon": "🎵",
+                "command": self.add_files
+            },
+            {
+                "text": "Add YouTube Playlist",
+                "icon": "▶️",
+                "command": self.add_youtube_playlist
+            },
+            # {
+            #     "text": "Set Playlist Directory",
+            #     "icon": "📁",
+            #     "command": self.set_playlist_directory
+            # },
+            {
+                "text": "Settings",
+                "icon": "⚙️",
+                "command": self.show_settings
+            },
+            {
+                "text": "About",
+                "icon": "ℹ️",
+                "command": self.show_about
+            }
+        ]
+
+        # 메뉴 옵션 버튼 생성
+        for option in menu_options:
+            self.create_menu_option(option)
+
+    def create_menu_option(self, option):
+        """Create individual menu option"""
+        option_frame = ctk.CTkFrame(
+            self.menu_frame,
+            fg_color=self.purple_mid,
+            corner_radius=10
+        )
+        option_frame.pack(fill="x", padx=20, pady=5)
+
+        btn = ctk.CTkButton(
+            option_frame,
+            text=f"{option['icon']} {option['text']}",
+            fg_color="transparent",
+            hover_color=self.purple_light,
+            anchor="w",
+            command=option['command']
+        )
+        btn.pack(fill="x", padx=10, pady=10)
+
+    # def set_playlist_directory(self):
+    #     """Set playlist directory"""
+    #     directory = filedialog.askdirectory()
+    #     if directory:
+    #         try:
+    #             self.db_manager.save_setting('download_directory', directory)
+    #             messagebox.showinfo("성공", "다운로드 디렉토리가 설정되었습니다.")
+    #         except Exception as e:
+    #             messagebox.showerror("Error", f"디렉토리 설정 중 오류 발생: {e}")
 
     def handle_menu_option(self, option):
         """Handle menu option selection"""
@@ -1123,79 +1213,57 @@ class ModernPurplePlayer(ctk.CTk):
         elif option == "About":
             self.show_about()
 
-    def show_album_view(self):
-        """Show album grid view"""
-        for frame in [self.player_frame, self.playlist_frame, self.search_frame,
-                      self.menu_frame if hasattr(self, 'menu_frame') else None]:
-            if frame:
-                frame.pack_forget()
+    # def show_album_view(self):
+    #     """Show album grid view"""
+    #     for frame in [self.player_frame, self.playlist_frame, self.search_frame,
+    #                   self.menu_frame if hasattr(self, 'menu_frame') else None]:
+    #         if frame:
+    #             frame.pack_forget()
+    #
+    #     if not hasattr(self, 'album_grid_frame'):
+    #         self.album_grid_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
+    #
+    #         search_frame = ctk.CTkFrame(self.album_grid_frame, fg_color=self.purple_mid)
+    #         search_frame.pack(fill="x", padx=20, pady=10)
+    #
+    #         ctk.CTkEntry(
+    #             search_frame,
+    #             placeholder_text="Search Albums...",
+    #             fg_color=self.purple_dark,
+    #             border_color=self.purple_light
+    #         ).pack(fill="x", padx=10, pady=10)
+    #
+    #         album_container = ctk.CTkScrollableFrame(
+    #             self.album_grid_frame,
+    #             fg_color=self.purple_dark
+    #         )
+    #         album_container.pack(fill="both", expand=True, padx=20)
+    #
+    #     self.album_grid_frame.pack(fill="both", expand=True)
 
-        if not hasattr(self, 'album_grid_frame'):
-            self.album_grid_frame = ctk.CTkFrame(self, fg_color=self.purple_dark)
-
-            search_frame = ctk.CTkFrame(self.album_grid_frame, fg_color=self.purple_mid)
-            search_frame.pack(fill="x", padx=20, pady=10)
-
-            ctk.CTkEntry(
-                search_frame,
-                placeholder_text="Search Albums...",
-                fg_color=self.purple_dark,
-                border_color=self.purple_light
-            ).pack(fill="x", padx=10, pady=10)
-
-            album_container = ctk.CTkScrollableFrame(
-                self.album_grid_frame,
-                fg_color=self.purple_dark
-            )
-            album_container.pack(fill="both", expand=True, padx=20)
-
-        self.album_grid_frame.pack(fill="both", expand=True)
-
-    def show_view(self, view):
-        """Show selected view and hide others"""
-        # Hide all frames
-        frames_to_hide = [
-            self.player_frame,
-            self.playlist_frame,
-            self.search_frame,
-            getattr(self, 'menu_frame', None),
-            getattr(self, 'album_grid_frame', None)
-        ]
-
-        for frame in frames_to_hide:
-            if frame:
-                frame.pack_forget()
-
-        # Show selected frame
-        if view == "player":
-            self.player_frame.pack(fill="both", expand=True)
-        elif view == "playlist":
-            self.playlist_frame.pack(fill="both", expand=True)
-        elif view == "search":
-            self.search_frame.pack(fill="both", expand=True)
+    def show_view(self, view_name):
+        """Show specific view"""
+        self.hide_all_frames()
+        self.show_selected_view(view_name)
 
     def navigate(self, icon):
         """Handle bottom navigation"""
         # Hide all frames first
-        frames_to_hide = [
-            self.player_frame,
-            self.playlist_frame,
-            self.search_frame,
-            getattr(self, 'menu_frame', None),
-            getattr(self, 'album_grid_frame', None)
-        ]
-
-        for frame in frames_to_hide:
-            if frame:
-                frame.pack_forget()
+        self.hide_all_frames()  # 기존의 hide_all_frames 메서드 재사용
 
         # Show selected view
         if icon == "🏠":
             self.player_frame.pack(fill="both", expand=True)
-        elif icon == "📃":
-            self.playlist_frame.pack(fill="both", expand=True)
+        elif icon == "📃": # 전체 플레이리스트 보기
+            if not self.playlist_viewer:
+                self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+            self.playlist_viewer.show_all_tracks()
+            self.playlist_viewer.pack(fill="both", expand=True)
         elif icon == "🔍":
-            self.search_frame.pack(fill="both", expand=True)
+            if not self.album_viewer:
+                self.album_viewer = AlbumViewer(self, self.db_manager, self)
+            self.album_viewer.pack(fill="both", expand=True)
+            self.album_viewer.refresh_view()
 
     def download_audio(self, song):
         """곡의 URL을 통해 오디오를 다운로드하고 파일 경로를 데이터베이스에 저장"""
@@ -1461,7 +1529,7 @@ class ModernPurplePlayer(ctk.CTk):
 
         ctk.CTkLabel(
             about_window,
-            text="Modern Purple Music Player",
+            text="PyTube Player",
             font=("Helvetica", 16, "bold")
         ).pack(pady=20)
 
@@ -1473,7 +1541,7 @@ class ModernPurplePlayer(ctk.CTk):
 
         ctk.CTkLabel(
             about_window,
-            text="© 2024 Your Name",
+            text="© 2024 by cookyman",
             font=("Helvetica", 12)
         ).pack(pady=10)
 
