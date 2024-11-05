@@ -340,7 +340,8 @@ class PlaylistViewer(ctk.CTkFrame):
                 'url': track[3],
                 'path': track[4]
             }
-            self.main_app.play_selected_track(track_info)
+            # 현재 모든 트랙 정보와 함께 재생 요청
+            self.main_app.play_selected_track(track_info, self.all_tracks)
         except Exception as e:
             messagebox.showerror("Error", f"트랙 재생 중 오류 발생: {e}")
 

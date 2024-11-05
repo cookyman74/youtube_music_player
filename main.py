@@ -548,15 +548,34 @@ class ModernPurplePlayer(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Error", f"플레이리스트 로드 중 오류 발생: {e}")
 
-    def play_selected_track(self, track_info):
+    def play_selected_track(self, track_info, all_tracks):
         """플레이리스트 뷰어에서 선택한 트랙 재생"""
-        # playlist에 트랙 추가
-        self.playlist.append(track_info)
-        self.current_index = len(self.playlist) - 1
 
-        # 트랙 재생
-        self.play_current()
-        self.show_view("player")
+        try:
+            # 전체 플레이리스트 초기화 및 설정
+            self.playlist.clear()
+
+            # 현재 플레이리스트의 모든 트랙을 추가
+            for track in all_tracks:
+                self.playlist.append({
+                    'title': track[0],
+                    'artist': track[1],
+                    'thumbnail': track[2],
+                    'url': track[3],
+                    'path': track[4]
+                })
+
+            # 선택한 트랙의 인덱스 찾기
+            self.current_index = next(
+                (i for i, track in enumerate(self.playlist)
+                 if track['path'] == track_info['path']), 0
+            )
+
+            # 트랙 재생
+            self.play_current()
+            self.show_view("player")
+        except Exception as e:
+            messagebox.showerror("Error", f"트랙 재생 준비 중 오류 발생: {e}")
 
     def start_track_download(self, track):
         """트랙 다운로드 시작"""
