@@ -74,50 +74,38 @@ class YtbListPlayer:
 
     def set_play_list(self, playlist_url):
         """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목, 썸네일을 추출하여 데이터베이스에 저장"""
-        ydl_opts = {
-            'quiet': True,
-            'extract_flat': True,
-            'skip_download': True,
-            'format': 'bestaudio/best',
-        }
-        with YoutubeDL(ydl_opts) as ydl:
-            playlist_info = ydl.extract_info(playlist_url, download=False)
-            playlist_title = playlist_info.get('title', 'Untitled Playlist')
-            # 데이터베이스에 플레이리스트 저장
-            playlist_id = self.db_manager.add_playlist(playlist_title, playlist_url)
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'extract_flat': True,
+                'skip_download': True,
+                'format': 'bestaudio/best',
+            }
 
-            # 각 트랙을 데이터베이스에 추가
-            for entry in playlist_info['entries']:
-                title = entry.get('title', 'Unknown Title')
-                artist = entry.get('artist', 'YouTube')  # YouTube에서 제공되지 않을 수 있음
-                thumbnail = entry.get('thumbnail')
-                video_id = entry.get('id')
+            with YoutubeDL(ydl_opts) as ydl:
+                playlist_info = ydl.extract_info(playlist_url, download=False)
+                playlist_title = playlist_info.get('title', 'Untitled Playlist')
 
-                # 만약 썸네일이 None이라면 기본 URL 설정 (YouTube에서는 고화질 썸네일을 제공)
-                if not thumbnail and video_id:
-                    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-                    thumbnail = self.download_thumbnail(thumbnail_url, video_id) if thumbnail_url else None
+                # 데이터베이스에 플레이리스트 저장
+                playlist_id = self.db_manager.add_playlist(playlist_title, playlist_url)
+                self.play_list = []  # 플레이리스트 초기화
 
-                url = entry.get('url')
+                # 각 트랙 정보 추출 및 저장
+                for entry in playlist_info['entries']:
+                    track_info = {
+                        'title': entry.get('title', 'Unknown Title'),
+                        'artist': entry.get('artist', 'YouTube'),
+                        'album': playlist_title,
+                        'url': entry.get('url'),
+                        'video_id': entry.get('id')
+                    }
+                    self.play_list.append(track_info)
 
-                # 오디오 다운로드 및 변환 후 파일 경로 저장
-                file_path = self.download_and_convert_audio(url, playlist_title, title)
+                return playlist_id
 
-                # file_path가 존재할 경우 데이터베이스에 트랙 저장
-                if file_path:
-                    self.db_manager.add_track(
-                        playlist_id, title, artist, thumbnail, url, file_path, "youtube"
-                    )
-
-                # 플레이리스트에 트랙 추가 (UI 업데이트를 위한 데이터)
-                self.play_list.append({
-                    'title': title,
-                    'album': playlist_title,
-                    'artist': artist,
-                    'thumbnail': thumbnail,
-                    'url': url,
-                    'path': file_path  # 저장된 파일 경로
-                })
+        except Exception as e:
+            print(f"플레이리스트 설정 중 오류 발생: {e}")
+            raise
 
     def sanitize_title(self, title):
         """특수 문자 처리: 경로 구분자(\, /)는 삭제하고, 따옴표(")는 (')로 대체"""

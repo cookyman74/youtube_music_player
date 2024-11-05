@@ -295,3 +295,72 @@ class DatabaseManager:
             print(f"Error getting API key: {e}")
             return None
 
+    def delete_playlist(self, playlist_id):
+        """플레이리스트와 관련된 모든 트랙을 삭제"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # 먼저 관련 트랙들의 파일을 삭제
+                cursor.execute('''
+                    SELECT file_path FROM tracks 
+                    WHERE playlist_id = ? AND file_path IS NOT NULL
+                ''', (playlist_id,))
+                file_paths = cursor.fetchall()
+
+                for (file_path,) in file_paths:
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to delete file {file_path}: {e}")
+
+                # 트랙 데이터 삭제
+                cursor.execute('DELETE FROM tracks WHERE playlist_id = ?', (playlist_id,))
+
+                # 플레이리스트 삭제
+                cursor.execute('DELETE FROM playlists WHERE id = ?', (playlist_id,))
+
+                conn.commit()
+                self.logger.info(f"Successfully deleted playlist {playlist_id} and its tracks")
+
+        except Exception as e:
+            self.logger.error(f"Error deleting playlist: {e}")
+            raise
+
+    def update_playlist_title(self, playlist_id, new_title):
+        """플레이리스트 제목 업데이트"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE playlists 
+                    SET title = ? 
+                    WHERE id = ?
+                ''', (new_title, playlist_id))
+                conn.commit()
+
+                if cursor.rowcount == 0:
+                    raise Exception(f"Playlist with ID {playlist_id} not found")
+
+                self.logger.info(f"Successfully updated playlist {playlist_id} title to '{new_title}'")
+
+        except Exception as e:
+            self.logger.error(f"Error updating playlist title: {e}")
+            raise
+
+    def get_playlist_by_id(self, playlist_id):
+        """플레이리스트 ID로 플레이리스트 정보 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, title, url 
+                    FROM playlists 
+                    WHERE id = ?
+                ''', (playlist_id,))
+                return cursor.fetchone()
+
+        except Exception as e:
+            self.logger.error(f"Error getting playlist by ID: {e}")
+            return None
