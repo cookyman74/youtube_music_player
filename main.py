@@ -18,6 +18,7 @@ import asyncio
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
+from settings_view import SettingsView
 
 # 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
@@ -1398,13 +1399,42 @@ class ModernPurplePlayer(ctk.CTk):
         seconds = int(seconds % 60)
         return f"{minutes:02d}:{seconds:02d}"
 
+    def get_album_count(self):
+        """DatabaseManager를 통해 앨범 수를 가져옵니다."""
+        return self.db_manager.get_album_count()
+
+    def get_track_count(self):
+        """DatabaseManager를 통해 트랙 수를 가져옵니다."""
+        return self.db_manager.get_track_count()
+
     def show_settings(self):
         """Show settings window"""
-        settings_window = ctk.CTkToplevel(self)
-        settings_window.title("Settings")
-        settings_window.geometry("300x200")
-        settings_window.configure(fg_color=self.purple_dark)
-        # Add settings options here
+        album_count = self.get_album_count()  # 앨범 수 계산
+        track_count = self.get_track_count()  # 트랙 수 계산
+        settings_window = SettingsView(self, self.db_manager, self.on_reset_settings, album_count, track_count)
+        settings_window.grab_set()
+
+    def on_reset_settings(self):
+        """Reset settings callback"""
+        # todo: 설정이 초기화되었을 때 UI를 업데이트하거나 추가적인 작업을 수행
+        print("Settings have been reset.")
+        # 예: 다운로드 위치 라벨을 초기화하거나 기타 UI 요소를 재설정
+        self.update_ui_after_settings_reset()
+
+    def update_ui_after_settings_reset(self):
+        """Update UI elements after settings are reset"""
+        # 설정 초기화 후 UI를 갱신하는 코드 작성
+        # 예시: 다운로드 디렉토리 라벨 초기화
+        if hasattr(self, 'download_directory_label'):
+            self.download_directory_label.configure(text="Not Set")
+
+        # 필요한 다른 UI 요소들을 갱신하거나 기본값으로 초기화하는 코드 추가
+        # 예: 다운로드 정보 표시 초기화
+        if hasattr(self, 'album_count_label'):
+            self.album_count_label.configure(text="Albums downloaded: 0")
+
+        if hasattr(self, 'track_count_label'):
+            self.track_count_label.configure(text="Tracks downloaded: 0")
 
     def show_about(self):
         """Show about window"""
