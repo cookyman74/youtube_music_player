@@ -294,3 +294,4 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error getting API key: {e}")
             return None
+

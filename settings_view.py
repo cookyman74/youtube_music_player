@@ -376,3 +376,4 @@ class SettingsView(ctk.CTkToplevel):
     def show_error_message(self, message):
         """에러 메시지 표시"""
         messagebox.showerror("Error", message)
+
