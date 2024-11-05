@@ -1,4 +1,6 @@
 import configparser
+from typing import Optional
+
 import requests
 import yt_dlp
 from yt_dlp import YoutubeDL
@@ -9,18 +11,66 @@ import re
 class YtbListPlayer:
     def __init__(self, db_manager):
         self.db_manager = db_manager
-        self.thumbnail_dir = configparser.ConfigParser
         self.play_list = []
+        self.download_status = {}  # 초기화 추가
 
-        # Config 파일 읽기
-        config = configparser.ConfigParser()
-        config.read('config.ini')
+        # download_directory를 데이터베이스에서 가져오기
+        self.download_directory = self.db_manager.get_setting("download_directory", "downloaded_audios")
 
         # 썸네일 디렉토리 설정
-        self.thumbnail_dir = config.get('Directories', 'thumbnail_dir', fallback='thumbnails')
+        self.thumbnail_dir = os.path.join(self.download_directory, 'thumbnails')
+        os.makedirs(self.thumbnail_dir, exist_ok=True)  # 썸네일 디렉토리 생성
 
-        # 썸네일 디렉토리 생성
-        os.makedirs(self.thumbnail_dir, exist_ok=True)
+    def reset_download_status(self):
+        """다운로드 상태 초기화"""
+        self.download_status = {}
+
+    def _progress_hook(self, d):
+        """다운로드 진행 상황을 추적하는 hook 메서드"""
+        if not hasattr(self, 'download_status'):
+            self.download_status = {}
+
+        try:
+            filename = d.get('filename', '')
+            if filename:
+                video_id = os.path.splitext(os.path.basename(filename))[0]  # 확장자 제외한 파일명 추출
+            else:
+                video_id = 'unknown'
+
+            if d['status'] == 'downloading':
+                try:
+                    # 다운로드 진행률 계산
+                    downloaded = d.get('downloaded_bytes', 0)
+                    total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
+
+                    if total > 0:
+                        progress = (downloaded / total) * 100
+                        self.download_status[video_id] = {
+                            'status': 'downloading',
+                            'progress': progress,
+                            'speed': d.get('speed', 0),
+                            'eta': d.get('eta', 0)
+                        }
+                        print(f"다운로드 진행률: {progress:.1f}% - {video_id}")
+                except Exception as e:
+                    print(f"Progress calculation error: {e}")
+
+            elif d['status'] == 'finished':
+                self.download_status[video_id] = {
+                    'status': 'finished',
+                    'progress': 100
+                }
+                print(f"다운로드 완료: {video_id}")
+
+            elif d['status'] == 'error':
+                self.download_status[video_id] = {
+                    'status': 'error',
+                    'error_message': d.get('error', 'Unknown error')
+                }
+                print(f"다운로드 실패: {video_id}")
+
+        except Exception as e:
+            print(f"Progress hook error: {e}")
 
     def set_play_list(self, playlist_url):
         """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목, 썸네일을 추출하여 데이터베이스에 저장"""
@@ -62,6 +112,7 @@ class YtbListPlayer:
                 # 플레이리스트에 트랙 추가 (UI 업데이트를 위한 데이터)
                 self.play_list.append({
                     'title': title,
+                    'album': playlist_title,
                     'artist': artist,
                     'thumbnail': thumbnail,
                     'url': url,
@@ -95,17 +146,28 @@ class YtbListPlayer:
 
         return None
 
-    def download_and_convert_audio(self, url, album_name, title):
+    def download_and_convert_audio(self, url, album_name, title) -> Optional[str]:
         """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 mp3로 변환 후 경로 반환"""
+        # 설정값 가져오기
+        preferred_codec = self.db_manager.get_setting('preferred_codec') or 'mp3'
+        preferred_quality = self.db_manager.get_setting('preferred_quality') or '192'
+        # download_dir = self.db_manager.get_setting('download_directory') or 'downloads'
+
         # 앨범 디렉토리 생성
         sanitized_album_name = self.sanitize_title(album_name)
-        album_dir = os.path.join("downloaded_audios", sanitized_album_name)
+        album_dir = os.path.join(self.download_directory, sanitized_album_name)
 
         if not os.path.exists(album_dir):
             os.makedirs(album_dir)
 
         # 파일명에서 특수 문자를 처리
         sanitized_title = self.sanitize_title(title)
+
+        # 다운로드 상태 초기화
+        self.download_status[sanitized_title] = {
+            'status': 'starting',
+            'progress': 0
+        }
 
         # yt_dlp 설정 - 다운로드 후 mp3로 변환
         ydl_opts = {
@@ -114,9 +176,10 @@ class YtbListPlayer:
             'quiet': True,
             'postprocessors': [{  # 다운로드 후 mp3로 변환
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',  # 음질 설정 (선택 사항)
+                'preferredcodec': preferred_codec,
+                'preferredquality': preferred_quality,  # 음질 설정 (선택 사항)
             }],
+            'progress_hooks': [self._progress_hook],  # 진행상황 hook
         }
 
         try:
@@ -125,15 +188,18 @@ class YtbListPlayer:
                 ydl.download([url])
 
             # 변환된 mp3 파일 경로 설정
-            output_path = os.path.join(album_dir, f'{sanitized_title}.mp3')
+            output_path = os.path.join(album_dir, f'{sanitized_title}.{preferred_codec}')
 
             # 변환된 파일이 존재하면 경로 반환, 그렇지 않으면 None 반환
             if os.path.exists(output_path):
                 return output_path
-            else:
-                print(f"Error: 파일 {output_path}이 생성되지 않았습니다.")
-                return None
+
+            print(f"Error: 파일 {output_path}이 생성되지 않았습니다.")
+            self.download_status[sanitized_title]['status'] = 'error'
+            return None
 
         except Exception as e:
             print(f"오디오 다운로드 및 변환 중 오류 발생: {e}")
+            self.download_status[sanitized_title]['status'] = 'error'
+            self.download_status[sanitized_title]['error_message'] = str(e)
             return None

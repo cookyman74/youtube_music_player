@@ -1,16 +1,34 @@
 import sqlite3
 import os
-from typing import Optional, List, Dict, Any
+from typing import Optional
+import logging
 
 class DatabaseManager:
     def __init__(self, db_path='music_player.db'):
         self.db_path = db_path
         self.init_db()
 
+        # Logger 설정
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
+        # 콘솔에 로그 출력 설정
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+
+        # 로그 포맷 설정
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+
+        # 핸들러 추가
+        self.logger.addHandler(console_handler)
+
     def init_db(self):
         """데이터베이스 초기화 및 테이블 생성"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+
+            # 플레이리스트 테이블 생성
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS playlists (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,6 +36,8 @@ class DatabaseManager:
                     url TEXT UNIQUE
                 )
             ''')
+
+            # 트랙 테이블 생성
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tracks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +51,8 @@ class DatabaseManager:
                     FOREIGN KEY (playlist_id) REFERENCES playlists(id)
                 )
             ''')
-            # =>> settings 테이블 생성
+
+            # settings 테이블 생성
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS settings (
                                 key TEXT PRIMARY KEY,
@@ -42,7 +63,7 @@ class DatabaseManager:
             # 기본 설정값 초기화
             self._init_default_settings(cursor)
 
-            # Example: Adding a new column 'description' to the playlists table if it doesn't exist
+            # 컬럼 추가시 자동 변경.
             self.add_column_if_not_exists(cursor, 'playlists', 'description', 'TEXT')
 
             conn.commit()
@@ -53,7 +74,9 @@ class DatabaseManager:
             'youtube_api_key': '',
             'download_directory': 'downloads',
             'theme_mode': 'dark',
-            'default_volume': '0.5'
+            'default_volume': '0.5',
+            'preferred_codec': 'mp3',
+            'preferred_quality': '192'
         }
 
         for key, value in default_settings.items():
@@ -62,20 +85,20 @@ class DatabaseManager:
                 VALUES (?, ?)
             ''', (key, value))
 
-    def get_setting(self, key: str) -> Optional[str]:
-        """설정값 조회"""
+    def reset_settings(self):
+        """모든 설정값 초기화"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
-                result = cursor.fetchone()
-                return result[0] if result else None
+                cursor.execute('DELETE FROM settings')
+                conn.commit()
+                self._init_default_settings(cursor)
         except Exception as e:
-            self.logger.error(f"Error getting setting {key}: {e}")
-            return None
+            self.logger.error(f"Error resetting settings: {e}")
+            raise
 
     def save_setting(self, key: str, value: str):
-        """설정값 저장"""
+        """설정값 저장 또는 업데이트"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -88,11 +111,19 @@ class DatabaseManager:
             self.logger.error(f"Error saving setting {key}: {e}")
             raise
 
-    # YouTube API Key 관련 메서드들은 일반 설정 메서드 사용
-    def save_youtube_api_key(self, api_key: str):
-        """YouTube API Key 저장"""
-        self.save_setting('youtube_api_key', api_key)
+    def get_setting(self, key: str, default=None) -> Optional[str]:
+        """설정값 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+                result = cursor.fetchone()
+                return result[0] if result else default
+        except Exception as e:
+            self.logger.error(f"Error getting setting {key}: {e}")
+            return default
 
+    # 설정 관련 헬퍼 메서드들
     def get_youtube_api_key(self) -> Optional[str]:
         """저장된 YouTube API Key 반환"""
         return self.get_setting('youtube_api_key')
@@ -106,26 +137,35 @@ class DatabaseManager:
         self.save_setting('download_directory', directory)
 
     def add_playlist(self, title, url):
-        """플레이리스트 정보를 데이터베이스에 추가"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR IGNORE INTO playlists (title, url)
-                VALUES (?, ?)
-            ''', (title, url))
-            conn.commit()
-            return cursor.lastrowid
+        """플레이리스트 추가"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT OR IGNORE INTO playlists (title, url)
+                    VALUES (?, ?)
+                ''', (title, url))
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            self.logger.error(f"Error adding playlist: {e}")
+            raise
 
     def add_track(self, playlist_id, title, artist, thumbnail, url, file_path, source_type):
-        """곡 정보를 데이터베이스에 추가"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR IGNORE INTO tracks (playlist_id, title, artist, thumbnail, url, file_path, source_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (playlist_id, title, artist, thumbnail, url, file_path, source_type))
-            print("데이터 저장: ", playlist_id, title, artist, thumbnail, url, file_path, source_type)
-            conn.commit()
+        """트랙 추가"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT OR IGNORE INTO tracks 
+                    (playlist_id, title, artist, thumbnail, url, file_path, source_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (playlist_id, title, artist, thumbnail, url, file_path, source_type))
+                conn.commit()
+                self.logger.debug(f"Added track: {title} to playlist {playlist_id}")
+        except Exception as e:
+            self.logger.error(f"Error adding track: {e}")
+            raise
 
     def get_tracks_by_playlist(self, playlist_id, source_type=None):
         """특정 플레이리스트의 모든 곡을 가져오기. source_type에 따라 필터링 가능"""
@@ -204,30 +244,19 @@ class DatabaseManager:
             ''', (key, value))
             conn.commit()
 
-    def get_setting(self, key, default=None):
-        """특정 설정 값을 가져오기. 존재하지 않을 경우 기본값 반환"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
-            result = cursor.fetchone()
-            return result[0] if result else default
-
-    def reset_settings(self):
-        """모든 설정 값을 초기화"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM settings')
-            conn.commit()
-
     def add_column_if_not_exists(self, cursor, table, column, column_type):
         """테이블 검사 헬퍼함수, 특정 컬럼이 있는지 확인하고, 존재하지 않으면 해당 컬럼을 추가"""
         # PRAGMA table_info 명령어를 사용하여 테이블의 기존 컬럼 정보를 가져옴.
-        cursor.execute(f"PRAGMA table_info({table})")
-        columns = [info[1] for info in cursor.fetchall()]
+        try:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = [info[1] for info in cursor.fetchall()]
 
-        if column not in columns:
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
-            print(f"Added column '{column}' to '{table}' table.")
+            if column not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+                self.logger.info(f"Added column '{column}' to '{table}' table")
+        except Exception as e:
+            self.logger.error(f"Error adding column: {e}")
+            raise
 
     def save_youtube_api_key(self, api_key: str):
         """YouTube API Key 저장"""
