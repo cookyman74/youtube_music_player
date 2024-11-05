@@ -29,6 +29,7 @@ def review_code(file_path, diff_content):
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
+            max_tokens=600,
             messages=[
                 {"role": "system", "content": "You are a code reviewer. Always provide your feedback in Korean, regardless of the language of the question."},
                 {"role": "user", "content": f"""
@@ -60,13 +61,17 @@ def get_changed_files():
     """원격 저장소와 로컬 저장소의 공통 조상을 기준으로 변경된 파일 목록을 가져오는 함수"""
     try:
         repo = Repo(".")
+
+        # 원격 저장소 정보 갱신
         origin = repo.remotes.origin
         origin.fetch()
 
         merge_base = repo.git.merge_base('origin/main', 'HEAD')
         diff_index = repo.git.diff(merge_base, 'HEAD', '--name-only')
 
+        # 변경된 파일 목록 출력 및 반환
         if not diff_index:
+            print("No changes found between the last common ancestor and the current commit.")
             return []
 
         changed_files = diff_index.splitlines()
@@ -81,10 +86,12 @@ def main():
 
         if not changed_files:
             output = {
-                "summary": "No code changes detected.",
+                "summary": "변경된 코드가 없습니다.",
                 "details": []
             }
-            print(json.dumps(output, ensure_ascii=False, indent=2))
+            with open("review_output.json", "w", encoding="utf-8") as f:
+                json.dump(output, f, ensure_ascii=False, indent=2)
+            print("No code changes detected.")
             return
 
         review_summary = "코드 리뷰가 완료되었습니다. 세부 사항은 아래를 참조하세요."

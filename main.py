@@ -19,6 +19,7 @@ import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
 from settings_view import SettingsView
+from tkinter import messagebox
 
 # 메인 GUI 음악 플레이어 클래스
 class ModernPurplePlayer(ctk.CTk):
@@ -129,17 +130,51 @@ class ModernPurplePlayer(ctk.CTk):
     def download_playlist(self, url):
         """YouTube 플레이리스트를 다운로드하고 UI를 업데이트하는 메소드 (별도 스레드에서 실행)"""
         self.ytb_player.set_play_list(url)
+        successful_downloads = 0
+        total_videos = len(self.ytb_player.play_list)
 
         # 다운로드 작업 수행 및 UI 업데이트
         for video in self.ytb_player.play_list:
-            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
+            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['album'], video['title'])
 
+            # 유효한 파일만 playlist에 추가
             if audio_path:
-                # 비동기적으로 UI에 추가하기 위해 메인 스레드에서 실행
+                successful_downloads += 1
                 self.playlist_container.after(0, lambda: self.add_song_to_playlist(audio_path, video['title'], video['artist']))
 
         # 다운로드 완료 후 UI 갱신
         self.playlist_container.after(0, self.update_playlist_ui)
+
+        # 다운로드 완료 메시지 표시
+        self.after(0, lambda: messagebox.showinfo(
+            "플레이리스트 다운로드 완료",
+            f"플레이리스트 다운로드가 완료되었습니다.\n성공: {successful_downloads}/{total_videos}"
+        ))
+
+    # def download_youtube_playlist(self, url):
+    #     """YouTube 플레이리스트 URL로부터 재생 목록을 다운로드하고 UI에 실시간 업데이트"""
+    #     self.ytb_player.set_play_list(url)
+    #
+    #     for video in self.ytb_player.play_list:
+    #         # 각 곡을 다운로드
+    #         audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['album'], video['title'])
+    #
+    #         # 유효한 파일만 playlist에 추가
+    #         if audio_path:
+    #             self.playlist.append(
+    #                 {'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}}
+    #             )
+    #
+    #             # 실시간 UI 업데이트를 큐에 추가
+    #             self.update_queue.put(self.partial_update_playlist_ui)
+    #
+    #     # 모든 다운로드가 완료된 후 UI를 최종 갱신
+    #     self.update_queue.put(self.update_playlist_ui)
+    #
+    #     # 첫 곡 재생 설정
+    #     if self.current_index == -1 and self.playlist:
+    #         self.current_index = 0
+    #         self.play_current()
 
     def add_song_to_playlist(self, audio_path, title, artist):
         """UI에 곡을 추가하는 메소드"""
@@ -148,32 +183,6 @@ class ModernPurplePlayer(ctk.CTk):
             'metadata': {'title': title, 'artist': artist}
         })
         self.update_playlist_ui()
-
-
-    def download_youtube_playlist(self, url):
-        """YouTube 플레이리스트 URL로부터 재생 목록을 다운로드하고 UI에 실시간 업데이트"""
-        self.ytb_player.set_play_list(url)
-
-        for video in self.ytb_player.play_list:
-            # 각 곡을 다운로드
-            audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['title'])
-
-            # 유효한 파일만 playlist에 추가
-            if audio_path:
-                self.playlist.append(
-                    {'path': audio_path, 'metadata': {'title': video['title'], 'artist': 'YouTube'}}
-                )
-
-                # 실시간 UI 업데이트를 큐에 추가
-                self.update_queue.put(self.partial_update_playlist_ui)
-
-        # 모든 다운로드가 완료된 후 UI를 최종 갱신
-        self.update_queue.put(self.update_playlist_ui)
-
-        # 첫 곡 재생 설정
-        if self.current_index == -1 and self.playlist:
-            self.current_index = 0
-            self.play_current()
 
     def partial_update_playlist_ui(self):
         """실시간으로 추가된 곡을 UI에 반영"""
@@ -365,6 +374,13 @@ class ModernPurplePlayer(ctk.CTk):
                 download_btn
             )
         )
+
+        # 다운로드 결과에 따른 메시지 표시
+        if result:
+            self.playlist_container.after(0, lambda: messagebox.showinfo(
+                "다운로드 완료",
+                f"{song['title']} 다운로드가 완료되었습니다."
+            ))
 
     def start_download(self, song, song_frame):
         """다운로드를 시작하고 로딩바를 표시"""
