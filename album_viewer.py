@@ -200,4 +200,12 @@ class AlbumViewer(ctk.CTkFrame):
 
     def view_playlist(self, playlist_id):
         """플레이리스트 뷰어로 전환"""
-        self.main_app.load_and_show_playlist(playlist_id)
+        try:
+            # 메인 앱의 current_playlist_id 업데이트
+            self.main_app.set_current_playlist(playlist_id)
+
+            # Playlist 탭으로 전환하고 해당 플레이리스트 표시
+            self.main_app.load_and_show_playlist(playlist_id)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"플레이리스트 전환 중 오류 발생: {e}")

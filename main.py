@@ -51,10 +51,6 @@ class ModernPurplePlayer(ctk.CTk):
         # DatabaseManager 초기화
         self.db_manager = DatabaseManager()
 
-        # 뷰어 인스턴스 초기화
-        self.album_viewer = None
-        self.playlist_viewer = None
-
         # YtbListPlayer 초기화 및 DB에서 플레이리스트 로드
         self.ytb_player = YtbListPlayer(self.db_manager)
         self.load_playlists_from_db()
@@ -68,6 +64,13 @@ class ModernPurplePlayer(ctk.CTk):
         self.playlist = []
         self.current_index = -1
         # self.ytb_player = YtbListPlayer()
+
+        # 현재 선택된 플레이리스트 ID 초기화
+        self.current_playlist_id = None
+
+        # 뷰어 인스턴스 초기화
+        self.album_viewer = None
+        self.playlist_viewer = None
 
         # Create tabs
         self.create_tab_view()
@@ -526,17 +529,24 @@ class ModernPurplePlayer(ctk.CTk):
             return None  # 로딩 실패 시 None 반환
 
     def load_and_show_playlist(self, playlist_id):
-        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동하여 출력"""
+        """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동"""
         try:
-            if self.playlist_viewer:
-                self.playlist_viewer.destroy()
+            # 현재 playlist_id 설정
+            self.current_playlist_id = playlist_id
 
-            self.playlist_viewer = PlaylistViewer(self, self.db_manager, self, playlist_id)
+            # 탭 선택 및 UI 업데이트
             self.select_tab("Playlist")
+
+            # PlaylistViewer가 없으면 생성
+            if not self.playlist_viewer:
+                self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+
+            # 특정 플레이리스트의 트랙 표시
+            self.playlist_viewer.show_playlist_tracks(playlist_id)
             self.playlist_viewer.pack(fill="both", expand=True)
 
         except Exception as e:
-            print(f"플레이리스트 로드 중 오류 발생: {e}")
+            messagebox.showerror("Error", f"플레이리스트 로드 중 오류 발생: {e}")
 
     def play_selected_track(self, track_info):
         """플레이리스트 뷰어에서 선택한 트랙 재생"""
@@ -1049,17 +1059,34 @@ class ModernPurplePlayer(ctk.CTk):
             elif view == "Playlist":
                 if not self.playlist_viewer:
                     self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+
+                if self.current_playlist_id:
+                    # 선택된 앨범의 플레이리스트 표시
+                    self.playlist_viewer.show_playlist_tracks(self.current_playlist_id)
+                else:
+                    # 선택된 앨범이 없으면 첫 번째 앨범 선택
+                    playlists = self.db_manager.get_all_playlists()
+                    if playlists:
+                        self.current_playlist_id = playlists[0][0]
+                        self.playlist_viewer.show_playlist_tracks(self.current_playlist_id)
+                    else:
+                        messagebox.showinfo("알림", "표시할 앨범이 없습니다.")
+
                 self.playlist_viewer.pack(fill="both", expand=True)
-                self.playlist_viewer.refresh_view()  # 뷰 새로고침
+
             elif view == "Album":
                 if not self.album_viewer:
                     self.album_viewer = AlbumViewer(self, self.db_manager, self)
                 self.album_viewer.pack(fill="both", expand=True)
-                self.album_viewer.refresh_view()  # 뷰 새로고침
+                self.album_viewer.refresh_view()
             elif view == "player":
                 self.player_frame.pack(fill="both", expand=True)
         except Exception as e:
             messagebox.showerror("Error", f"뷰 전환 중 오류 발생: {e}")
+
+    def set_current_playlist(self, playlist_id):
+        """현재 선택된 플레이리스트 ID 설정"""
+        self.current_playlist_id = playlist_id
 
     def select_tab(self, tab):
         """Handle tab selection"""
@@ -1098,11 +1125,11 @@ class ModernPurplePlayer(ctk.CTk):
                 "icon": "▶️",
                 "command": self.add_youtube_playlist
             },
-            {
-                "text": "Set Playlist Directory",
-                "icon": "📁",
-                "command": self.set_playlist_directory
-            },
+            # {
+            #     "text": "Set Playlist Directory",
+            #     "icon": "📁",
+            #     "command": self.set_playlist_directory
+            # },
             {
                 "text": "Settings",
                 "icon": "⚙️",
@@ -1138,15 +1165,15 @@ class ModernPurplePlayer(ctk.CTk):
         )
         btn.pack(fill="x", padx=10, pady=10)
 
-    def set_playlist_directory(self):
-        """Set playlist directory"""
-        directory = filedialog.askdirectory()
-        if directory:
-            try:
-                self.db_manager.save_setting('download_directory', directory)
-                messagebox.showinfo("성공", "다운로드 디렉토리가 설정되었습니다.")
-            except Exception as e:
-                messagebox.showerror("Error", f"디렉토리 설정 중 오류 발생: {e}")
+    # def set_playlist_directory(self):
+    #     """Set playlist directory"""
+    #     directory = filedialog.askdirectory()
+    #     if directory:
+    #         try:
+    #             self.db_manager.save_setting('download_directory', directory)
+    #             messagebox.showinfo("성공", "다운로드 디렉토리가 설정되었습니다.")
+    #         except Exception as e:
+    #             messagebox.showerror("Error", f"디렉토리 설정 중 오류 발생: {e}")
 
     def handle_menu_option(self, option):
         """Handle menu option selection"""
@@ -1208,11 +1235,11 @@ class ModernPurplePlayer(ctk.CTk):
         # Show selected view
         if icon == "🏠":
             self.player_frame.pack(fill="both", expand=True)
-        elif icon == "📃":
+        elif icon == "📃": # 전체 플레이리스트 보기
             if not self.playlist_viewer:
                 self.playlist_viewer = PlaylistViewer(self, self.db_manager, self)
+            self.playlist_viewer.show_all_tracks()
             self.playlist_viewer.pack(fill="both", expand=True)
-            self.playlist_viewer.refresh_view()
         elif icon == "🔍":
             if not self.album_viewer:
                 self.album_viewer = AlbumViewer(self, self.db_manager, self)
@@ -1483,7 +1510,7 @@ class ModernPurplePlayer(ctk.CTk):
 
         ctk.CTkLabel(
             about_window,
-            text="Modern Purple Music Player",
+            text="PyTube Player",
             font=("Helvetica", 16, "bold")
         ).pack(pady=20)
 
@@ -1495,7 +1522,7 @@ class ModernPurplePlayer(ctk.CTk):
 
         ctk.CTkLabel(
             about_window,
-            text="© 2024 Your Name",
+            text="© 2024 by cookyman",
             font=("Helvetica", 12)
         ).pack(pady=10)
 
