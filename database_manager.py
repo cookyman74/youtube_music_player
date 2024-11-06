@@ -76,7 +76,7 @@ class DatabaseManager:
             'download_directory': 'downloads',
             'theme_mode': 'dark',
             'default_volume': '0.5',
-            'preferred_codec': 'mp3',
+            'preferred_codec': 'mp4a',
             'preferred_quality': '192'
         }
 
@@ -197,6 +197,15 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute('SELECT id, title, url FROM playlists')
             playlists = cursor.fetchall()
+            print("플레이리스트 가져오기:", playlists)  # 데이터 확인을 위한 출력
+            return playlists
+
+    def get_playlist_by_url(self, url):
+        """모든 플레이리스트를 가져오기"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, title, url FROM playlists WHERE url = ?', (url, ))
+            playlists = cursor.fetchone()
             print("플레이리스트 가져오기:", playlists)  # 데이터 확인을 위한 출력
             return playlists
 
@@ -397,4 +406,4 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"트랙 조회 중 오류 발생: {e}")
-            return Noneㄴ
+            return None

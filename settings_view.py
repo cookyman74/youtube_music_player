@@ -20,7 +20,7 @@ class SettingsView(ctk.CTkToplevel):
 
         # Window setup
         self.title("Settings")
-        self.geometry("400x530")
+        self.geometry("420x800")
         self.configure(fg_color=parent.purple_dark)
 
         # Load current settings
@@ -45,7 +45,7 @@ class SettingsView(ctk.CTkToplevel):
                 'download_directory': self.db_manager.get_setting('download_directory') or 'downloads',
                 'theme_mode': self.db_manager.get_setting('theme_mode') or 'dark',
                 'default_volume': float(self.db_manager.get_setting('default_volume') or 0.5),
-                'preferred_codec': self.db_manager.get_setting('preferred_codec') or 'mp3',  # 추가
+                'preferred_codec': self.db_manager.get_setting('preferred_codec') or 'mp4a',  # 추가
                 'preferred_quality': self.db_manager.get_setting('preferred_quality') or '192'  # 추가
             }
         except Exception as e:
@@ -56,7 +56,7 @@ class SettingsView(ctk.CTkToplevel):
                 'download_directory': 'downloads',
                 'theme_mode': 'dark',
                 'default_volume': 0.5,
-                'preferred_codec': 'mp3',
+                'preferred_codec': 'mp4a',
                 'preferred_quality': '192'
             }
 
@@ -120,6 +120,7 @@ class SettingsView(ctk.CTkToplevel):
         # Help text with [바로가기] link button
         help_text = """
     YouTube API 키를 얻으려면:
+    ** 현재 개발 중 입니다.**
         1. Google Cloud Console에 접속하세요.
         2. 새 프로젝트를 만드세요.
         3. YouTube Data API v3을 활성화하세요.
@@ -254,15 +255,15 @@ class SettingsView(ctk.CTkToplevel):
         ).pack(side="left", padx=(0, 10))
 
         # Codec dropdown
-        codec_options = ['mp3', 'aac', 'm4a', 'wav', 'flac']
-        self.codec_var = ctk.StringVar(value=self.current_settings.get('preferred_codec', 'mp3'))
+        codec_options = ['mp4a', 'mp3', 'wav', 'aac', 'flac']
+        self.codec_var = ctk.StringVar(value=self.current_settings.get('preferred_codec', 'mp4a'))
         codec_dropdown = ctk.CTkOptionMenu(
             codec_frame,
             values=codec_options,
             variable=self.codec_var,
-            command=self._on_codec_change
+            command=self._on_codec_change,
         )
-        codec_dropdown.pack(side="left", expand=True)
+        codec_dropdown.pack(side="right", expand=True)
 
         # Quality Selection
         quality_frame = ctk.CTkFrame(audio_frame, fg_color="transparent")
@@ -283,10 +284,11 @@ class SettingsView(ctk.CTkToplevel):
             variable=self.quality_var,
             command=self._on_quality_change
         )
-        quality_dropdown.pack(side="left", expand=True)
+        quality_dropdown.pack(side="right", expand=True)
 
         # Quality explanation
-        quality_info = """Audio Quality Guide:
+        quality_info = """오디오 품질 설정 가이드:
+        ** FFmpeg이 설치되어 있어야 다양한 코덱으로 다운로드가 가능합니다.**
         64 kbps  - Basic quality, smallest file size
         128 kbps - Standard quality
         192 kbps - High quality (recommended)
@@ -296,7 +298,7 @@ class SettingsView(ctk.CTkToplevel):
         ctk.CTkLabel(
             audio_frame,
             text=quality_info,
-            font=("Helvetica", 10),
+            font=("Helvetica", 12),
             justify="left",
             text_color="gray"
         ).pack(anchor="w", padx=10, pady=5)

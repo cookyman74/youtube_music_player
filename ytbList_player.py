@@ -1,4 +1,7 @@
 import configparser
+import tkinter as tk
+import subprocess
+from tkinter import messagebox
 from typing import Optional
 
 import requests
@@ -14,6 +17,7 @@ class YtbListPlayer:
         self.db_manager = db_manager
         self.play_list = []
         self.download_status = {}  # 초기화 추가
+        self.ffmpeg_checked = False  # ffmpeg 설치 여부 확인 상태 추가
 
         # Logger 설정
         self.logger = logging.getLogger(__name__)
@@ -29,6 +33,75 @@ class YtbListPlayer:
         # 썸네일 디렉토리 설정
         self.thumbnail_dir = os.path.join(self.download_directory, 'thumbnails')
         os.makedirs(self.thumbnail_dir, exist_ok=True)  # 썸네일 디렉토리 생성
+
+    def check_ffmpeg_installed(self) -> bool:
+        """ffmpeg 설치 여부를 확인하는 메서드"""
+        try:
+            subprocess.run(["ffmpeg", "-version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def install_ffmpeg(self):
+        """ffmpeg 자동 설치 메서드"""
+        if os.name == 'nt':  # Windows
+            url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n5.0-latest-win64-gpl.zip"
+            print("ffmpeg를 다운로드하고 있습니다...")
+            subprocess.run(["curl", "-L", "-o", "ffmpeg.zip", url], check=True)
+            subprocess.run(["tar", "-xf", "ffmpeg.zip"], check=True)
+            os.environ["PATH"] += os.pathsep + os.path.abspath("ffmpeg/bin")
+            print("ffmpeg가 Windows에 설치되었습니다.")
+        elif os.name == 'posix':  # macOS 및 Linux
+            if "darwin" in os.sys.platform:  # macOS
+                print("macOS에서 ffmpeg 설치를 시작합니다...")
+                process = subprocess.Popen(
+                    ["brew", "install", "ffmpeg"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+            else:  # Linux
+                print("Linux에서 ffmpeg 설치를 시작합니다...")
+                process = subprocess.Popen(
+                    ["sudo", "apt-get", "install", "-y", "ffmpeg"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+
+            # 실시간으로 출력 확인
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    print(output.strip())
+
+            # 오류가 발생한 경우 stderr를 출력
+            if process.returncode != 0:
+                print("ffmpeg 설치 중 오류 발생:")
+                error_output = process.stderr.read()
+                print(error_output)
+
+            print("ffmpeg가 설치되었습니다.")
+
+    def prompt_ffmpeg_installation(self):
+        """ffmpeg 설치 여부 확인 후 사용자에게 알림을 띄우는 메서드"""
+        if not self.check_ffmpeg_installed():
+            response = messagebox.askquestion(
+                "ffmpeg가 설치되어 있지 않습니다.",
+                """ffmpeg가 설치되어 있지 않기 때문에 MP3 다운로등 및 재생 등 일부 기능이 제한될 수 있습니다.\n\n
+                계속 다운로드 하시려면 'NO'를 선택하거나, ffmpeg 설치를 자동으로 설치하시려면 'YES'를 선택하세요.""",
+                icon='warning'
+            )
+            if response == "no":  # '계속 다운로드'를 선택한 경우
+                messagebox.showinfo("다운로드 시작", "webm 파일로 다운로드 됩니다.")
+                return False  # ffmpeg 설치하지 않음
+            elif response == "yes":  # 'ffmpeg 설치'를 선택한 경우
+                self.install_ffmpeg()
+                messagebox.showinfo("설치 완료", "ffmpeg가 성공적으로 설치되었습니다.")
+                return True
+        return True  # ffmpeg가 이미 설치된 경우
 
     def reset_download_status(self):
         """다운로드 상태 초기화"""
@@ -84,6 +157,18 @@ class YtbListPlayer:
     def set_play_list(self, playlist_url):
         """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목, 썸네일을 추출하여 데이터베이스에 저장"""
         try:
+            # ffmpeg 설치 여부를 한 번만 확인
+            if not self.ffmpeg_checked:
+                self.ffmpeg_checked = True  # 설치 여부 확인 플래그 설정
+                if not self.check_ffmpeg_installed():
+                    permit_install = self.prompt_ffmpeg_installation()
+                    if not permit_install:
+                        self.ffmpeg_installed = False
+                    else:
+                        self.ffmpeg_installed = True
+                else:
+                    self.ffmpeg_installed = True
+
             ydl_opts = {
                 'quiet': True,
                 'extract_flat': True,
@@ -151,15 +236,9 @@ class YtbListPlayer:
         if existing_track and existing_track['file_path']:
             return existing_track['file_path']
 
-        # 설정값 가져오기
-        preferred_codec = self.db_manager.get_setting('preferred_codec') or 'mp3'
-        preferred_quality = self.db_manager.get_setting('preferred_quality') or '192'
-        # download_dir = self.db_manager.get_setting('download_directory') or 'downloads'
-
         # 앨범 디렉토리 생성
         sanitized_album_name = self.sanitize_title(album_name)
         album_dir = os.path.join(self.download_directory, sanitized_album_name)
-
         if not os.path.exists(album_dir):
             os.makedirs(album_dir)
 
@@ -175,17 +254,28 @@ class YtbListPlayer:
         # yt_dlp 설정 - 다운로드 후 mp3로 변환
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': os.path.join(album_dir, f'{sanitized_title}.%(ext)s'),  # 파일 이름 및 확장자 설정
+            'outtmpl': os.path.join(album_dir, f'{sanitized_title}.%(ext)s'),
             'quiet': True,
-            'postprocessors': [{  # 다운로드 후 mp3로 변환
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': preferred_codec,
-                'preferredquality': preferred_quality,  # 음질 설정 (선택 사항)
-            }],
-            'progress_hooks': [self._progress_hook],  # 진행상황 hook
+            'progress_hooks': [self._progress_hook],
         }
 
+        preferred_codec = 'webm'
+        # ffmpeg가 설치되지 않은 경우, 변환 후처리기(postprocessor)를 제거
+        if getattr(self, 'ffmpeg_installed', True):
+            # ffmpeg가 있는 경우에만 postprocessors 옵션 추가
+            # 설정값 가져오기
+            preferred_codec = self.db_manager.get_setting('preferred_codec') or 'mp3'
+            preferred_quality = self.db_manager.get_setting('preferred_quality') or '192'
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': preferred_codec,
+                'preferredquality': preferred_quality,
+            }]
+
         try:
+            # 기본값 None으로 초기화
+            thumbnail_path = None
+
             # 오디오 다운로드 및 mp3로 변환
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -203,20 +293,18 @@ class YtbListPlayer:
                     output_path = None
                     self.download_status[sanitized_title]['status'] = 'error'
 
-                try:
-                    self.db_manager.add_track(
-                        playlist_id=playlist_id,
-                        title=title,
-                        artist=info.get('artist', 'YouTube'),
-                        thumbnail=thumbnail_path,
-                        url=url,
-                        file_path=output_path,
-                        source_type='youtube'
-                    )
-                except Exception as db_error:
-                    self.logger.error(f"Database error while adding track: {db_error}")
-                    raise
+                self.db_manager.add_track(
+                    playlist_id=playlist_id,
+                    title=title,
+                    artist=info.get('artist', 'YouTube'),
+                    thumbnail=thumbnail_path,
+                    url=url,
+                    file_path=output_path,
+                    source_type='youtube'
+                )
+
                 return output_path
+
         except Exception as e:
             print(f"오디오 다운로드 및 변환 중 오류 발생: {e}")
             self.download_status[sanitized_title]['status'] = 'error'
@@ -237,4 +325,5 @@ class YtbListPlayer:
                 self.logger.error(f"Failed to save failed track info: {db_error}")
             return None
         finally:
-            pass
+            if sanitized_title in self.download_status:
+                del self.download_status[sanitized_title]
