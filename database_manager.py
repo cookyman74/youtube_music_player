@@ -6,7 +6,6 @@ import logging
 class DatabaseManager:
     def __init__(self, db_path='music_player.db'):
         self.db_path = db_path
-        self.init_db()
 
         # Logger 설정
         self.logger = logging.getLogger(__name__)
@@ -22,6 +21,8 @@ class DatabaseManager:
 
         # 핸들러 추가
         self.logger.addHandler(console_handler)
+
+        self.init_db()
 
     def init_db(self):
         """데이터베이스 초기화 및 테이블 생성"""
@@ -75,7 +76,7 @@ class DatabaseManager:
             'download_directory': 'downloads',
             'theme_mode': 'dark',
             'default_volume': '0.5',
-            'preferred_codec': 'mp3',
+            'preferred_codec': 'mp4a',
             'preferred_quality': '192'
         }
 
@@ -196,6 +197,15 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute('SELECT id, title, url FROM playlists')
             playlists = cursor.fetchall()
+            print("플레이리스트 가져오기:", playlists)  # 데이터 확인을 위한 출력
+            return playlists
+
+    def get_playlist_by_url(self, url):
+        """모든 플레이리스트를 가져오기"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, title, url FROM playlists WHERE url = ?', (url, ))
+            playlists = cursor.fetchone()
             print("플레이리스트 가져오기:", playlists)  # 데이터 확인을 위한 출력
             return playlists
 
@@ -363,4 +373,37 @@ class DatabaseManager:
 
         except Exception as e:
             self.logger.error(f"Error getting playlist by ID: {e}")
+            return None
+
+    def get_track_by_url_and_title(self, url, title):
+        """URL과 제목으로 트랙 정보 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # 트랙 정보 조회 쿼리
+                cursor.execute('''
+                    SELECT t.id, t.title, t.artist, t.thumbnail, t.url, t.file_path, t.source_type, t.playlist_id
+                    FROM tracks t
+                    JOIN playlists p ON t.playlist_id = p.id
+                    WHERE p.url = ? AND t.title = ?
+                ''', (url, title))
+
+                result = cursor.fetchone()
+
+                if result:
+                    return {
+                        'id': result[0],
+                        'title': result[1],
+                        'artist': result[2],
+                        'thumbnail': result[3],
+                        'url': result[4],
+                        'file_path': result[5],
+                        'source_type': result[6],
+                        'playlist_id': result[7]
+                    }
+                return None
+
+        except Exception as e:
+            self.logger.error(f"트랙 조회 중 오류 발생: {e}")
             return None

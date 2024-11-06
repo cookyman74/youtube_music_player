@@ -6,6 +6,7 @@ import os
 import pygame
 from customtkinter import CTkImage
 from mutagen import File
+from pytube.extract import playlist_id
 
 from album_viewer import AlbumViewer
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
@@ -143,7 +144,9 @@ class ModernPurplePlayer(ctk.CTk):
 
             # 다운로드 작업 수행 및 UI 업데이트
             for video in self.ytb_player.play_list:
-                audio_path = self.ytb_player.download_and_convert_audio(video['url'], video['album'], video['title'])
+                audio_path = self.ytb_player.download_and_convert_audio(
+                    video['url'], video['album'], video['playlist_id'], video['title']
+                )
 
                 # 유효한 파일만 저장
                 if audio_path:
@@ -168,8 +171,14 @@ class ModernPurplePlayer(ctk.CTk):
 
             # 메인 스레드에서 UI 업데이트 실행
             self.after(0, update_ui)
+
         except Exception as e:
-            self.after(0, lambda: messagebox.showerror("Error", f"다운로드 중 오류 발생: {e}"))
+            error_message = f"다운로드 중 오류 발생: {str(e)}"
+
+            def show_error():
+                messagebox.showerror("Error", error_message)
+
+            self.after(0, show_error)
 
     # def download_youtube_playlist(self, url):
     #     """YouTube 플레이리스트 URL로부터 재생 목록을 다운로드하고 UI에 실시간 업데이트"""
@@ -1267,9 +1276,10 @@ class ModernPurplePlayer(ctk.CTk):
         """곡의 URL을 통해 오디오를 다운로드하고 파일 경로를 데이터베이스에 저장"""
         title = song['title']
         url = song['url']
+        album = song['album']
 
         # YtbListPlayer 인스턴스를 사용하여 다운로드 및 변환
-        audio_path = self.ytb_player.download_and_convert_audio(url, title)
+        audio_path = self.ytb_player.download_and_convert_audio(url, album, title)
 
         if audio_path:
             playlist_id = self.db_manager.get_playlist_id_by_url(url)
