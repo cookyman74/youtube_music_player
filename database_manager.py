@@ -6,7 +6,6 @@ import logging
 class DatabaseManager:
     def __init__(self, db_path='music_player.db'):
         self.db_path = db_path
-        self.init_db()
 
         # Logger 설정
         self.logger = logging.getLogger(__name__)
@@ -22,6 +21,8 @@ class DatabaseManager:
 
         # 핸들러 추가
         self.logger.addHandler(console_handler)
+
+        self.init_db()
 
     def init_db(self):
         """데이터베이스 초기화 및 테이블 생성"""
