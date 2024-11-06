@@ -365,3 +365,36 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Error getting playlist by ID: {e}")
             return None
+
+    def get_track_by_url_and_title(self, url, title):
+        """URL과 제목으로 트랙 정보 조회"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # 트랙 정보 조회 쿼리
+                cursor.execute('''
+                    SELECT t.id, t.title, t.artist, t.thumbnail, t.url, t.file_path, t.source_type, t.playlist_id
+                    FROM tracks t
+                    JOIN playlists p ON t.playlist_id = p.id
+                    WHERE p.url = ? AND t.title = ?
+                ''', (url, title))
+
+                result = cursor.fetchone()
+
+                if result:
+                    return {
+                        'id': result[0],
+                        'title': result[1],
+                        'artist': result[2],
+                        'thumbnail': result[3],
+                        'url': result[4],
+                        'file_path': result[5],
+                        'source_type': result[6],
+                        'playlist_id': result[7]
+                    }
+                return None
+
+        except Exception as e:
+            self.logger.error(f"트랙 조회 중 오류 발생: {e}")
+            return Noneㄴ

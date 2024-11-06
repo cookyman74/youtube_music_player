@@ -6,6 +6,7 @@ import yt_dlp
 from yt_dlp import YoutubeDL
 import os
 import re
+import logging
 
 
 class YtbListPlayer:
@@ -13,6 +14,14 @@ class YtbListPlayer:
         self.db_manager = db_manager
         self.play_list = []
         self.download_status = {}  # 초기화 추가
+
+        # Logger 설정
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
+        # 콘솔에 로그 출력 설정
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
 
         # download_directory를 데이터베이스에서 가져오기
         self.download_directory = self.db_manager.get_setting("download_directory", "downloaded_audios")
@@ -97,7 +106,8 @@ class YtbListPlayer:
                         'artist': entry.get('artist', 'YouTube'),
                         'album': playlist_title,
                         'url': entry.get('url'),
-                        'video_id': entry.get('id')
+                        'video_id': entry.get('id'),
+                        'playlist_id': playlist_id,
                     }
                     self.play_list.append(track_info)
 
@@ -134,8 +144,13 @@ class YtbListPlayer:
 
         return None
 
-    def download_and_convert_audio(self, url, album_name, title) -> Optional[str]:
+    def download_and_convert_audio(self, url, album_name, playlist_id, title) -> Optional[str]:
         """YouTube 비디오 URL에서 오디오 스트림을 다운로드하고 mp3로 변환 후 경로 반환"""
+
+        existing_track = self.db_manager.get_track_by_url_and_title(url, title)
+        if existing_track and existing_track['file_path']:
+            return existing_track['file_path']
+
         # 설정값 가져오기
         preferred_codec = self.db_manager.get_setting('preferred_codec') or 'mp3'
         preferred_quality = self.db_manager.get_setting('preferred_quality') or '192'
@@ -173,21 +188,53 @@ class YtbListPlayer:
         try:
             # 오디오 다운로드 및 mp3로 변환
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                output_path = os.path.join(album_dir, f'{sanitized_title}.{preferred_codec}')
 
-            # 변환된 mp3 파일 경로 설정
-            output_path = os.path.join(album_dir, f'{sanitized_title}.{preferred_codec}')
+                if os.path.exists(output_path):
+                    # 썸네일 처리
+                    thumbnail_path = None
+                    if info.get('thumbnail'):
+                        thumbnail_path = self.download_thumbnail(
+                            info['thumbnail'],
+                            info.get('id', sanitized_title)
+                        )
+                else:
+                    output_path = None
+                    self.download_status[sanitized_title]['status'] = 'error'
 
-            # 변환된 파일이 존재하면 경로 반환, 그렇지 않으면 None 반환
-            if os.path.exists(output_path):
+                try:
+                    self.db_manager.add_track(
+                        playlist_id=playlist_id,
+                        title=title,
+                        artist=info.get('artist', 'YouTube'),
+                        thumbnail=thumbnail_path,
+                        url=url,
+                        file_path=output_path,
+                        source_type='youtube'
+                    )
+                except Exception as db_error:
+                    self.logger.error(f"Database error while adding track: {db_error}")
+                    raise
                 return output_path
-
-            print(f"Error: 파일 {output_path}이 생성되지 않았습니다.")
-            self.download_status[sanitized_title]['status'] = 'error'
-            return None
-
         except Exception as e:
             print(f"오디오 다운로드 및 변환 중 오류 발생: {e}")
             self.download_status[sanitized_title]['status'] = 'error'
             self.download_status[sanitized_title]['error_message'] = str(e)
+            # 실패 시에도 DB에 트랙 정보 저장 시도
+            try:
+                if playlist_id:
+                    self.db_manager.add_track(
+                        playlist_id=playlist_id,
+                        title=title,
+                        artist='YouTube',
+                        thumbnail=None,
+                        url=url,
+                        file_path=None,
+                        source_type='youtube'
+                    )
+            except Exception as db_error:
+                self.logger.error(f"Failed to save failed track info: {db_error}")
             return None
+        finally:
+            pass
