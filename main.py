@@ -1,14 +1,11 @@
 import tkinter as tk
-from io import BytesIO
-from tkinter import ttk, filedialog, simpledialog
+from tkinter import filedialog, simpledialog
 import customtkinter as ctk
-import requests
-from PIL import Image, ImageTk
+from PIL import Image
 import os
 import pygame
+from customtkinter import CTkImage
 from mutagen import File
-from mutagen.easyid3 import EasyID3
-from pytube.extract import playlist_id
 
 from album_viewer import AlbumViewer
 from audio_waveform_visualizer import AudioWaveformVisualizer, RealTimeWaveformUpdater
@@ -518,15 +515,16 @@ class ModernPurplePlayer(ctk.CTk):
             )
             artist_label.pack(fill="x")
 
-    def load_thumbnail(self, thumbnail_path):
-        """썸네일 파일 경로에서 이미지를 로드하여 CTkImage로 변환"""
-        try:
-            image = Image.open(thumbnail_path)
-            image = image.resize((80, 80), Image.LANCZOS)  # 썸네일 크기 조정
-            return ImageTk.PhotoImage(image)
-        except Exception as e:
-            print(f"썸네일 로딩 실패: {e}")
-            return None  # 로딩 실패 시 None 반환
+    # def load_thumbnail(self, thumbnail_path):
+    #     """썸네일 파일 경로에서 이미지를 로드하여 CTkImage로 변환"""
+    #     try:
+    #         image = Image.open(thumbnail_path)
+    #         image = image.resize((80, 80), Image.LANCZOS)  # 썸네일 크기 조정
+    #         ctk_image = CTkImage(light_image=image, size=(80, 80))  # CTkImage로 변환
+    #         return ctk_image
+    #     except Exception as e:
+    #         print(f"썸네일 로딩 실패: {e}")
+    #         return None  # 로딩 실패 시 None 반환
 
     def load_and_show_playlist(self, playlist_id):
         """특정 playlist_id에 해당하는 트랙을 로드하고 playlist 탭으로 이동"""
@@ -976,18 +974,18 @@ class ModernPurplePlayer(ctk.CTk):
 
             # 이미지 로드 및 크기 조정
             img = Image.open(thumbnail_path)
-            img = img.resize((200, 200), Image.LANCZOS)  # 메인 플레이어에서 사용할 크기
 
-            # ImageTk.PhotoImage로 변환하여 CTkLabel에 표시
-            photo = ImageTk.PhotoImage(img)
+            # CTkImage 변환.
+            ctk_image = CTkImage(light_image=img, size=(200, 200))
 
             # 이전 앨범 아트 이미지를 제거하고 새 이미지로 업데이트
             for widget in self.album_frame.winfo_children():
                 widget.destroy()
 
+
             # CTkLabel에 이미지 추가
-            label = ctk.CTkLabel(self.album_frame, image=photo, text="")
-            label.image = photo  # 참조 유지
+            label = ctk.CTkLabel(self.album_frame, image=ctk_image, text="")
+            label.image = ctk_image  # 참조 유지
             label.pack(fill="both", expand=True)
 
         except Exception as e:
@@ -1286,74 +1284,74 @@ class ModernPurplePlayer(ctk.CTk):
 
         return False  # 실패 시 False 반환
 
-    def filter_playlist(self, event=None):
-        """Filter playlist based on search entry"""
-        search_term = self.search_entry.get().lower()
-
-        # 기존 플레이리스트 UI 요소 초기화
-        for frame in self.song_frames:
-            frame.destroy()
-        self.song_frames.clear()
-
-        # 검색어에 따라 self.playlist에서 필터링된 곡들만 self.filtered_playlist에 저장
-        self.filtered_playlist = [
-            song for song in self.playlist
-            if search_term in song.get('title', '').lower() or search_term in song.get('artist', '').lower()
-        ]
-
-        # 검색어에 따라 self.playlist에서 필터링된 곡들만 표시
-        for i, song in enumerate(self.filtered_playlist):
-            title = song.get('title', '').lower()
-            artist = song.get('artist', '').lower()
-
-            # 제목 또는 아티스트가 검색어를 포함하는 경우에만 표시
-            if search_term in title or search_term in artist:
-                song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
-                song_frame.pack(fill="x", pady=5)
-                self.song_frames.append(song_frame)
-
-                info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
-                info_frame.pack(fill="x", padx=10, pady=10)
-
-                # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
-                if song['path']:
-                    play_btn = ctk.CTkButton(
-                        info_frame,
-                        text="▶",
-                        width=30,
-                        fg_color="transparent",
-                        hover_color="#6B5B95",
-                        command=lambda idx=i: self.play_selected(idx)
-                    )
-                    play_btn.pack(side="left", padx=(0, 10))
-                else:
-                    download_btn = ctk.CTkButton(
-                        info_frame,
-                        text="Download",
-                        width=30,
-                        fg_color="transparent",
-                        hover_color="#FF4B8C",
-                        command=lambda s=song, frame=song_frame: self.start_download(s, frame)
-                    )
-                    download_btn.pack(side="left", padx=(0, 10))
-
-                # 곡 제목과 아티스트 정보 표시
-                title_label = ctk.CTkLabel(
-                    info_frame,
-                    text=song['title'],
-                    font=("Helvetica", 14, "bold"),
-                    anchor="w"
-                )
-                title_label.pack(fill="x", pady=(0, 2))
-
-                artist_label = ctk.CTkLabel(
-                    info_frame,
-                    text=song['artist'],
-                    font=("Helvetica", 12),
-                    text_color="gray",
-                    anchor="w"
-                )
-                artist_label.pack(fill="x")
+    # def filter_playlist(self, event=None):
+    #     """Filter playlist based on search entry"""
+    #     search_term = self.search_entry.get().lower()
+    #
+    #     # 기존 플레이리스트 UI 요소 초기화
+    #     for frame in self.song_frames:
+    #         frame.destroy()
+    #     self.song_frames.clear()
+    #
+    #     # 검색어에 따라 self.playlist에서 필터링된 곡들만 self.filtered_playlist에 저장
+    #     self.filtered_playlist = [
+    #         song for song in self.playlist
+    #         if search_term in song.get('title', '').lower() or search_term in song.get('artist', '').lower()
+    #     ]
+    #
+    #     # 검색어에 따라 self.playlist에서 필터링된 곡들만 표시
+    #     for i, song in enumerate(self.filtered_playlist):
+    #         title = song.get('title', '').lower()
+    #         artist = song.get('artist', '').lower()
+    #
+    #         # 제목 또는 아티스트가 검색어를 포함하는 경우에만 표시
+    #         if search_term in title or search_term in artist:
+    #             song_frame = ctk.CTkFrame(self.playlist_container, fg_color="#2D2640", corner_radius=10)
+    #             song_frame.pack(fill="x", pady=5)
+    #             self.song_frames.append(song_frame)
+    #
+    #             info_frame = ctk.CTkFrame(song_frame, fg_color="transparent")
+    #             info_frame.pack(fill="x", padx=10, pady=10)
+    #
+    #             # 파일 경로가 있는 경우 재생 버튼 표시, 없는 경우 다운로드 버튼 표시
+    #             if song['path']:
+    #                 play_btn = ctk.CTkButton(
+    #                     info_frame,
+    #                     text="▶",
+    #                     width=30,
+    #                     fg_color="transparent",
+    #                     hover_color="#6B5B95",
+    #                     command=lambda idx=i: self.play_selected(idx)
+    #                 )
+    #                 play_btn.pack(side="left", padx=(0, 10))
+    #             else:
+    #                 download_btn = ctk.CTkButton(
+    #                     info_frame,
+    #                     text="Download",
+    #                     width=30,
+    #                     fg_color="transparent",
+    #                     hover_color="#FF4B8C",
+    #                     command=lambda s=song, frame=song_frame: self.start_download(s, frame)
+    #                 )
+    #                 download_btn.pack(side="left", padx=(0, 10))
+    #
+    #             # 곡 제목과 아티스트 정보 표시
+    #             title_label = ctk.CTkLabel(
+    #                 info_frame,
+    #                 text=song['title'],
+    #                 font=("Helvetica", 14, "bold"),
+    #                 anchor="w"
+    #             )
+    #             title_label.pack(fill="x", pady=(0, 2))
+    #
+    #             artist_label = ctk.CTkLabel(
+    #                 info_frame,
+    #                 text=song['artist'],
+    #                 font=("Helvetica", 12),
+    #                 text_color="gray",
+    #                 anchor="w"
+    #             )
+    #             artist_label.pack(fill="x")
 
     def play_selected(self, index):
         """Play selected song from playlist"""

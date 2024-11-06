@@ -38,8 +38,15 @@ class AlbumViewer(ctk.CTkFrame):
         search_frame = ctk.CTkFrame(self, fg_color=self.purple_mid)
         search_frame.pack(fill="x", padx=20, pady=10)
 
+        search_container = ctk.CTkFrame(search_frame, fg_color="transparent")
+        search_container.pack(fill="x", padx=10, pady=10)
+
+        # 검색 아이콘
+        search_icon = ctk.CTkLabel(search_container, text="🔍", fg_color="transparent")
+        search_icon.pack(side="left", padx=(5, 0))
+
         self.search_entry = ctk.CTkEntry(
-            search_frame,
+            search_container,
             placeholder_text="앨범 검색...",
             fg_color=self.purple_dark,
             border_color=self.purple_light
