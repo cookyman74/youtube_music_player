@@ -10,6 +10,7 @@ from yt_dlp import YoutubeDL
 import os
 import re
 import logging
+import zipfile
 
 
 class YtbListPlayer:
@@ -17,7 +18,13 @@ class YtbListPlayer:
         self.db_manager = db_manager
         self.play_list = []
         self.download_status = {}  # 초기화 추가
-        self.ffmpeg_checked = False  # ffmpeg 설치 여부 확인 상태 추가
+        self.ffmpeg_path = self.db_manager.get_ffmpeg_path()
+
+        # ffmpeg 설치 여부 초기화
+        if self.ffmpeg_path and os.path.exists(self.ffmpeg_path):
+            self.ffmpeg_checked = True  # 이미 설치된 경우
+        else:
+            self.ffmpeg_checked = False  # 설치되지 않은 경우
 
         # Logger 설정
         self.logger = logging.getLogger(__name__)
@@ -35,55 +42,101 @@ class YtbListPlayer:
         os.makedirs(self.thumbnail_dir, exist_ok=True)  # 썸네일 디렉토리 생성
 
     def check_ffmpeg_installed(self) -> bool:
-        """ffmpeg 설치 여부를 확인하는 메서드"""
+        """FFMPEG 설치 여부 확인 및 초기화"""
         try:
             subprocess.run(["ffmpeg", "-version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return True
+            self.ffmpeg_checked = True
         except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
+            self.ffmpeg_checked = False
+
+        return self.ffmpeg_checked
 
     def install_ffmpeg(self):
         """ffmpeg 자동 설치 메서드"""
-        if os.name == 'nt':  # Windows
-            url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n5.0-latest-win64-gpl.zip"
-            print("ffmpeg를 다운로드하고 있습니다...")
-            subprocess.run(["curl", "-L", "-o", "ffmpeg.zip", url], check=True)
-            subprocess.run(["tar", "-xf", "ffmpeg.zip"], check=True)
-            os.environ["PATH"] += os.pathsep + os.path.abspath("ffmpeg/bin")
-            print("ffmpeg가 Windows에 설치되었습니다.")
-        elif os.name == 'posix':  # macOS 및 Linux
-            if "darwin" in os.sys.platform:  # macOS
-                print("macOS에서 ffmpeg 설치를 시작합니다...")
-                process = subprocess.Popen(
-                    ["brew", "install", "ffmpeg"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-            else:  # Linux
-                print("Linux에서 ffmpeg 설치를 시작합니다...")
-                process = subprocess.Popen(
-                    ["sudo", "apt-get", "install", "-y", "ffmpeg"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
+        try:
+            if os.name == 'nt':  # Windows
+                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+                zip_path = "ffmpeg.zip"
 
-            # 실시간으로 출력 확인
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    print(output.strip())
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
 
-            # 오류가 발생한 경우 stderr를 출력
-            if process.returncode != 0:
-                print("ffmpeg 설치 중 오류 발생:")
-                error_output = process.stderr.read()
-                print(error_output)
+                print("ffmpeg를 다운로드하고 있습니다...")
+                response = requests.get(url, stream=True)
+                if response.status_code == 200:
+                    with open(zip_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    print("ffmpeg 다운로드 완료.")
+                else:
+                    raise Exception(f"ffmpeg 다운로드 실패: HTTP {response.status_code}")
 
-            print("ffmpeg가 설치되었습니다.")
+                if not zipfile.is_zipfile(zip_path):
+                    raise Exception("다운로드된 파일이 유효한 ZIP 파일이 아닙니다. 다시 시도해 주세요.")
+
+                print("ffmpeg 압축을 해제하고 있습니다...")
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall("ffmpeg")
+
+                self.ffmpeg_path = os.path.abspath("ffmpeg/bin/ffmpeg.exe")
+                os.environ["PATH"] += os.pathsep + os.path.abspath("ffmpeg/bin")
+                print("ffmpeg가 Windows에 설치되었습니다.")
+                self.db_manager.save_ffmpeg_path(self.ffmpeg_path)  # FFMPEG 경로 저장
+                self.ffmpeg_checked = True
+
+            elif os.name == 'posix':  # macOS 및 Linux
+                if "darwin" in os.sys.platform:  # macOS
+                    print("macOS에서 ffmpeg 설치를 시작합니다...")
+                    process = subprocess.Popen(
+                        ["brew", "install", "ffmpeg"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                else:  # Linux
+                    print("Linux에서 ffmpeg 설치를 시작합니다...")
+                    process = subprocess.Popen(
+                        ["sudo", "apt-get", "install", "-y", "ffmpeg"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+
+                # 실시간으로 출력 확인
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        print(output.strip())
+
+                # 오류가 발생한 경우 stderr를 출력
+                if process.returncode != 0:
+                    print("ffmpeg 설치 중 오류 발생:")
+                    error_output = process.stderr.read()
+                    print(error_output)
+
+                print("ffmpeg가 설치되었습니다.")
+
+        except subprocess.CalledProcessError as e:
+            print(f"설치 중 오류 발생: {e}")
+        except Exception as e:
+            print(f"압축 해제 중 오류 발생: {e}")
+
+    def download_and_convert_audio(self, url):
+        """오디오 다운로드 및 변환"""
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'ffmpeg_location': self.ffmpeg_path,  # ffmpeg 경로 명시적으로 지정
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
     def prompt_ffmpeg_installation(self):
         """ffmpeg 설치 여부 확인 후 사용자에게 알림을 띄우는 메서드"""
@@ -159,15 +212,10 @@ class YtbListPlayer:
         try:
             # ffmpeg 설치 여부를 한 번만 확인
             if not self.ffmpeg_checked:
-                self.ffmpeg_checked = True  # 설치 여부 확인 플래그 설정
-                if not self.check_ffmpeg_installed():
-                    permit_install = self.prompt_ffmpeg_installation()
-                    if not permit_install:
-                        self.ffmpeg_installed = False
-                    else:
-                        self.ffmpeg_installed = True
-                else:
-                    self.ffmpeg_installed = True
+                if self.ffmpeg_path and os.path.exists(self.ffmpeg_path):
+                    self.ffmpeg_checked = True  # 설치 여부 확인 플래그 설정
+                if not self.check_ffmpeg_installed(): # 설치 안된 경우
+                    self.prompt_ffmpeg_installation()
 
             ydl_opts = {
                 'quiet': True,
@@ -271,6 +319,9 @@ class YtbListPlayer:
                 'preferredcodec': preferred_codec,
                 'preferredquality': preferred_quality,
             }]
+            # ffmpeg_location을 문자열 경로로 지정
+            ydl_opts[
+                'ffmpeg_location'] = 'C:\\Users\\cooky\\PycharmProjects\\youtube_music_player\\ffmpeg\\ffmpeg-7.1-essentials_build\\bin\\ffmpeg.exe'
 
         try:
             # 기본값 None으로 초기화

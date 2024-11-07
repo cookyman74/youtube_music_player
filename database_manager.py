@@ -407,3 +407,11 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"트랙 조회 중 오류 발생: {e}")
             return None
+
+    def save_ffmpeg_path(self, ffmpeg_path: str):
+        """FFMPEG 경로를 설정에 저장"""
+        self.save_setting('ffmpeg_path', ffmpeg_path)
+
+    def get_ffmpeg_path(self) -> Optional[str]:
+        """저장된 FFMPEG 경로를 반환"""
+        return self.get_setting('ffmpeg_path')
