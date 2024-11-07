@@ -76,9 +76,12 @@ class DatabaseManager:
             'download_directory': 'downloads',
             'theme_mode': 'dark',
             'default_volume': '0.5',
-            'preferred_codec': 'mp4a',
+            'preferred_codec': 'mp3',
             'preferred_quality': '192'
         }
+
+        if os.name == 'nt':
+            default_settings['ffmpeg_path'] = os.path.abspath("./utils/ffmpeg/bin/ffmpeg.exe")
 
         for key, value in default_settings.items():
             cursor.execute('''

@@ -1,4 +1,5 @@
 import configparser
+import shutil
 import tkinter as tk
 import subprocess
 from tkinter import messagebox
@@ -21,7 +22,7 @@ class YtbListPlayer:
         self.ffmpeg_path = self.db_manager.get_ffmpeg_path()
 
         # ffmpeg 설치 여부 초기화
-        if self.ffmpeg_path and os.path.exists(self.ffmpeg_path):
+        if self.ffmpeg_path:
             self.ffmpeg_checked = True  # 이미 설치된 경우
         else:
             self.ffmpeg_checked = False  # 설치되지 않은 경우
@@ -55,33 +56,7 @@ class YtbListPlayer:
         """ffmpeg 자동 설치 메서드"""
         try:
             if os.name == 'nt':  # Windows
-                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-                zip_path = "ffmpeg.zip"
-
-                if os.path.exists(zip_path):
-                    os.remove(zip_path)
-
-                print("ffmpeg를 다운로드하고 있습니다...")
-                response = requests.get(url, stream=True)
-                if response.status_code == 200:
-                    with open(zip_path, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    print("ffmpeg 다운로드 완료.")
-                else:
-                    raise Exception(f"ffmpeg 다운로드 실패: HTTP {response.status_code}")
-
-                if not zipfile.is_zipfile(zip_path):
-                    raise Exception("다운로드된 파일이 유효한 ZIP 파일이 아닙니다. 다시 시도해 주세요.")
-
-                print("ffmpeg 압축을 해제하고 있습니다...")
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall("ffmpeg")
-
-                self.ffmpeg_path = os.path.abspath("ffmpeg/bin/ffmpeg.exe")
-                os.environ["PATH"] += os.pathsep + os.path.abspath("ffmpeg/bin")
-                print("ffmpeg가 Windows에 설치되었습니다.")
-                self.db_manager.save_ffmpeg_path(self.ffmpeg_path)  # FFMPEG 경로 저장
+                self.ffmpeg_path = os.path.abspath("./utils/ffmpeg/bin/ffmpeg.exe")
                 self.ffmpeg_checked = True
 
             elif os.name == 'posix':  # macOS 및 Linux
@@ -117,6 +92,20 @@ class YtbListPlayer:
                     print(error_output)
 
                 print("ffmpeg가 설치되었습니다.")
+
+                # ffmpeg 경로 확인
+                self.ffmpeg_path = shutil.which("ffmpeg")
+                if self.ffmpeg_path:
+                    os.environ["PATH"] += os.pathsep + os.path.dirname(self.ffmpeg_path)
+                else:
+                    raise Exception("FFMPEG 설치 후 경로를 찾을 수 없습니다.")
+
+            # FFMPEG 경로를 데이터베이스에 저장
+            if self.ffmpeg_path:
+                self.db_manager.save_ffmpeg_path(self.ffmpeg_path)
+                print(f"FFMPEG 경로가 저장되었습니다: {self.ffmpeg_path}")
+            else:
+                raise Exception("FFMPEG 경로 저장 실패")
 
         except subprocess.CalledProcessError as e:
             print(f"설치 중 오류 발생: {e}")
@@ -211,10 +200,11 @@ class YtbListPlayer:
         """YouTube 플레이리스트 URL에서 모든 비디오 URL과 제목, 썸네일을 추출하여 데이터베이스에 저장"""
         try:
             # ffmpeg 설치 여부를 한 번만 확인
+            self.check_ffmpeg_installed()
             if not self.ffmpeg_checked:
-                if self.ffmpeg_path and os.path.exists(self.ffmpeg_path):
+                if self.ffmpeg_path or os.path.exists(self.ffmpeg_path):
                     self.ffmpeg_checked = True  # 설치 여부 확인 플래그 설정
-                if not self.check_ffmpeg_installed(): # 설치 안된 경우
+                else:
                     self.prompt_ffmpeg_installation()
 
             ydl_opts = {
@@ -320,8 +310,7 @@ class YtbListPlayer:
                 'preferredquality': preferred_quality,
             }]
             # ffmpeg_location을 문자열 경로로 지정
-            ydl_opts[
-                'ffmpeg_location'] = 'C:\\Users\\cooky\\PycharmProjects\\youtube_music_player\\ffmpeg\\ffmpeg-7.1-essentials_build\\bin\\ffmpeg.exe'
+            ydl_opts['ffmpeg_location'] = os.path.normpath(self.ffmpeg_path)
 
         try:
             # 기본값 None으로 초기화

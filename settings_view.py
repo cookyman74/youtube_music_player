@@ -45,7 +45,7 @@ class SettingsView(ctk.CTkToplevel):
                 'download_directory': self.db_manager.get_setting('download_directory') or 'downloads',
                 'theme_mode': self.db_manager.get_setting('theme_mode') or 'dark',
                 'default_volume': float(self.db_manager.get_setting('default_volume') or 0.5),
-                'preferred_codec': self.db_manager.get_setting('preferred_codec') or 'mp4a',  # 추가
+                'preferred_codec': self.db_manager.get_setting('preferred_codec') or 'mp3',  # 추가
                 'preferred_quality': self.db_manager.get_setting('preferred_quality') or '192'  # 추가
             }
         except Exception as e:
@@ -56,7 +56,7 @@ class SettingsView(ctk.CTkToplevel):
                 'download_directory': 'downloads',
                 'theme_mode': 'dark',
                 'default_volume': 0.5,
-                'preferred_codec': 'mp4a',
+                'preferred_codec': 'mp3',
                 'preferred_quality': '192'
             }
 
@@ -255,8 +255,8 @@ class SettingsView(ctk.CTkToplevel):
         ).pack(side="left", padx=(0, 10))
 
         # Codec dropdown
-        codec_options = ['mp4a', 'mp3', 'wav', 'aac', 'flac']
-        self.codec_var = ctk.StringVar(value=self.current_settings.get('preferred_codec', 'mp4a'))
+        codec_options = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
+        self.codec_var = ctk.StringVar(value=self.current_settings.get('preferred_codec', 'mp3'))
         codec_dropdown = ctk.CTkOptionMenu(
             codec_frame,
             values=codec_options,
@@ -287,13 +287,13 @@ class SettingsView(ctk.CTkToplevel):
         quality_dropdown.pack(side="right", expand=True)
 
         # Quality explanation
-        quality_info = """오디오 품질 설정 가이드:
-        ** FFmpeg이 설치되어 있어야 다양한 코덱으로 다운로드가 가능합니다.**
-        64 kbps  - Basic quality, smallest file size
-        128 kbps - Standard quality
-        192 kbps - High quality (recommended)
-        256 kbps - Very high quality
-        320 kbps - Maximum quality, largest file size"""
+        quality_info = """ 오디오 품질 설정 가이드:
+    ** FFmpeg이 설치되어 있어야 다양한 코덱으로 다운로드가 가능합니다.**
+    ** PyTube Player는 MP3, WAV, OGG만 플레이할 수 있습니다. **
+    128 kbps - Standard quality
+    192 kbps - High quality (recommended)
+    256 kbps - Very high quality
+    320 kbps - Maximum quality, largest file size"""
 
         ctk.CTkLabel(
             audio_frame,
