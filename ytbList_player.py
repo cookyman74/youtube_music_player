@@ -112,21 +112,6 @@ class YtbListPlayer:
         except Exception as e:
             print(f"압축 해제 중 오류 발생: {e}")
 
-    def download_and_convert_audio(self, url):
-        """오디오 다운로드 및 변환"""
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'ffmpeg_location': self.ffmpeg_path,  # ffmpeg 경로 명시적으로 지정
-        }
-
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
     def prompt_ffmpeg_installation(self):
         """ffmpeg 설치 여부 확인 후 사용자에게 알림을 띄우는 메서드"""
         if not self.check_ffmpeg_installed():
@@ -202,7 +187,7 @@ class YtbListPlayer:
             # ffmpeg 설치 여부를 한 번만 확인
             self.check_ffmpeg_installed()
             if not self.ffmpeg_checked:
-                if self.ffmpeg_path or os.path.exists(self.ffmpeg_path):
+                if self.ffmpeg_path:
                     self.ffmpeg_checked = True  # 설치 여부 확인 플래그 설정
                 else:
                     self.prompt_ffmpeg_installation()
